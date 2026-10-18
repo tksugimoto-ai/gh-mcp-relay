@@ -5,6 +5,7 @@ import {
   KEY_ARG,
   checkCall,
   createKey,
+  deniedMethod,
   injectKeyParam,
   matchRoute,
   reposInArgs,
@@ -81,6 +82,18 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   assert.ok(checkCall({ tool: 'search_issues', args: { owner: 'tksugimoto', repo: 'a', query: 'x' } }, allowed));
   assert.ok(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto' } }, allowed));
   assert.equal(checkCall({ tool: 'get_me', args: {} }, allowed), null);
+});
+
+test('deniedMethod: owner/repo を確かめられないメソッドを通さない', () => {
+  for (const method of ['initialize', 'ping', 'tools/list', 'tools/call', 'notifications/initialized']) {
+    assert.equal(deniedMethod({ jsonrpc: '2.0', id: 1, method }), undefined, method);
+  }
+  assert.equal(deniedMethod({ jsonrpc: '2.0', id: 1, result: {} }), undefined, 'サーバーへの応答');
+  for (const method of ['resources/read', 'resources/templates/list', 'prompts/get', 'completion/complete']) {
+    assert.equal(deniedMethod({ jsonrpc: '2.0', id: 1, method })?.method, method);
+  }
+  const batch = [{ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { jsonrpc: '2.0', id: 2, method: 'resources/read' }];
+  assert.equal(deniedMethod(batch).id, 2);
 });
 
 test('stripKey: tools/call の key を取り出して引数から消す', () => {

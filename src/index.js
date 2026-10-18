@@ -3,7 +3,7 @@
 // - 確かめるのは、ツール呼び出しの upstream_key と、その key が許す repo だけ。
 // - パスはそのまま公式 GitHub MCP（api.githubcopilot.com）に渡す。中継は設定ファイルを持たない。
 
-import { checkCall, hasMethod, injectKeyParam, matchRoute, resourceMetadata, stripKey, verifyKey } from './lib.js';
+import { checkCall, deniedMethod, hasMethod, injectKeyParam, matchRoute, resourceMetadata, stripKey, verifyKey } from './lib.js';
 
 const FORWARD_REQUEST_HEADERS = ['authorization', 'content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'];
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'mcp-session-id', 'cache-control'];
@@ -33,6 +33,11 @@ export default {
         message = JSON.parse(await request.text());
       } catch {
         return json(400, rpcError(null, -32700, 'parse error'));
+      }
+      const denied = deniedMethod(message);
+      if (denied) {
+        log(route.path, denied.method, 'denied');
+        return json(200, rpcError(denied.id ?? null, -32601, `${denied.method} は使えません`));
       }
       const { message: stripped, calls } = stripKey(message);
       for (const call of calls) {

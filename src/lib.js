@@ -13,6 +13,9 @@ const UPSTREAM_PATH_RE = /^\/mcp(\/[A-Za-z0-9._,-]+)*\/?$/;
 
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
+// 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
+// owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
+const ALLOWED_METHODS = new Set(['initialize', 'ping', 'tools/list', 'tools/call']);
 
 // URL のパスから、転送先を決める。パスはそのまま公式 GitHub MCP に渡す。
 export function matchRoute(pathname) {
@@ -106,6 +109,16 @@ export function checkCall(call, allowedRepos) {
   }
   const denied = repos.find((r) => !allowedRepos.includes(r));
   return denied ? `${denied} はこの key で許可されていません` : null;
+}
+
+// 通さないメソッドを含むなら、その最初のメッセージを返す。method の無いもの（サーバーへの応答）は通す。
+export function deniedMethod(message) {
+  const list = Array.isArray(message) ? message : [message];
+  return list.find((msg) => {
+    const method = msg?.method;
+    if (method === undefined) return false;
+    return !(ALLOWED_METHODS.has(method) || String(method).startsWith('notifications/'));
+  });
 }
 
 // JSON-RPC のメッセージ（単体または配列）から tools/call の upstream_key を取り出し、

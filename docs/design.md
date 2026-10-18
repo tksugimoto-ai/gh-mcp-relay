@@ -101,6 +101,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 ### ツールの扱い
 
+- 通す JSON-RPC のメソッドは、`initialize`・`ping`・`tools/list`・`tools/call`・`notifications/*` だけにする。公式 GitHub MCP は repo の中身をリソース（`repo://{owner}/{repo}/contents{/path*}` など）としても出していて、`resources/read` などは repo を URI で渡すので、引数の `owner`/`repo` では確かめられないため。
 - 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。
 - `owner`/`repo` を取らないツール（`get_teams`、`create_repository`、`search_code` など）は、`get_me` を除いて拒否する。`owner` だけのツール（`list_issue_types` など）も拒否になる。
 - `search_*` は `owner`/`repo` を省略でき（`search_issues` など）、クエリでほかの repo にも届きうるので、引数によらず拒否する。

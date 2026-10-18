@@ -89,6 +89,16 @@ test('key が許していない repo は転送しない', async () => {
   assert.equal(forwarded.length, 0);
 });
 
+test('resources/read などは key があっても転送しない', async () => {
+  const forwarded = stubFetch();
+  const read = { jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'repo://other/private/contents/README.md' } };
+  const res = await worker.fetch(call([read]), env);
+  const body = await res.json();
+  assert.equal(body.id, 3);
+  assert.equal(body.error.code, -32601);
+  assert.equal(forwarded.length, 0);
+});
+
 test('正しい key と repo なら key を消して転送する', async () => {
   const forwarded = stubFetch();
   const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY, ...repoArgs, title: 'x' })), env);
