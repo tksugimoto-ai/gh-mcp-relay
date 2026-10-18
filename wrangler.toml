@@ -1,0 +1,6 @@
+name = "gh-mcp-relay"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# パスごとの設定は secret の PATHS_JSON に入れる（repo には置かない）。
+#   npx wrangler secret put PATHS_JSON < paths.json

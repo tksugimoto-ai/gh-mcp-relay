@@ -1,0 +1,11 @@
+{
+  "paths": {
+    "pocket-ssh-agent": {
+      "enabled": true,
+      "expires": "2027-04-01",
+      "key_sha256": "<npm run new-key の key_sha256>",
+      "allowed_logins": ["tksugimoto-ai"],
+      "upstream": "https://api.githubcopilot.com/mcp/x/issues,pull_requests"
+    }
+  }
+}
