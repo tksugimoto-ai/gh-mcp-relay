@@ -119,7 +119,7 @@ KEY_SECRET=$(cat .key-secret) npm run new-key -- tksugimoto/app tksugimoto/app-s
 cloud では、本流ごとに専用の環境を作り、次を設定します。Default 環境には key を置きません。
 
 - 環境変数: `UPSTREAM_KEY=<発行した key>`
-- セットアップスクリプト: `examples/setup-script.sh` を参考にする（`~/.claude/CLAUDE.md` に使い方と key を書く）
+- セットアップスクリプト: [examples/setup-script.sh](examples/setup-script.sh) を参考にする（`~/.claude/CLAUDE.md` に使い方と key を書く）
 
 ### ローカルの Claude Code で使う場合
 
