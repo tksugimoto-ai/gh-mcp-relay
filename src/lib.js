@@ -13,6 +13,9 @@ const UPSTREAM_PATH_RE = /^\/mcp(\/[A-Za-z0-9._,-]+)*\/?$/;
 
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
+// owner だけを取り、アカウントや org 全体に効くツール（Projects）。repo を足されても上流は無視するので、
+// 引数によらず使わせない。
+const OWNER_SCOPED_TOOL_RE = /project/;
 // 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
 // owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
 const ALLOWED_METHODS = new Set(['initialize', 'ping', 'tools/list', 'tools/call']);
@@ -103,6 +106,7 @@ export function reposInArgs(args) {
 export function checkCall(call, allowedRepos) {
   // search_* は owner/repo を省略でき、クエリでほかの repo にも届きうるので、引数によらず使わせない。
   if (String(call.tool).startsWith('search_')) return 'search_* のツールは使えません';
+  if (OWNER_SCOPED_TOOL_RE.test(call.tool)) return 'Projects のツールは使えません';
   const repos = reposInArgs(call.args);
   if (repos.length === 0) {
     return REPOLESS_TOOLS.has(call.tool) ? null : 'owner と repo を取らないツールは使えません';

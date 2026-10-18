@@ -103,7 +103,8 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 - 通す JSON-RPC のメソッドは、`initialize`・`ping`・`tools/list`・`tools/call`・`notifications/*` だけにする。公式 GitHub MCP は repo の中身をリソース（`repo://{owner}/{repo}/contents{/path*}` など）としても出していて、`resources/read` などは repo を URI で渡すので、引数の `owner`/`repo` では確かめられないため。
 - 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。
-- `owner`/`repo` を取らないツール（`get_teams`、`create_repository`、`search_code` など）は、`get_me` を除いて拒否する。`owner` だけのツール（`list_issue_types` など）も拒否になる。
+- `owner`/`repo` を取らないツール（`get_teams`、`create_repository`、`search_code` など）は、`get_me` を除いて拒否する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。
+- Projects のツール（`projects_list`、`projects_write` など）は、`owner` だけを取りアカウントや org 全体に効く。使わない `repo` を足すと確認を通ってしまうので、名前に `project` を含むツールは引数によらず拒否する。
 - `search_*` は `owner`/`repo` を省略でき（`search_issues` など）、クエリでほかの repo にも届きうるので、引数によらず拒否する。
 - 中継は通信の中身をこれ以上は解析しない。ツールごとに細かく制限したくなったら、公式サーバーへの転送をやめて、少数の自前ツールを実装する。
 

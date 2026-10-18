@@ -81,6 +81,10 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   assert.ok(checkCall({ tool: 'search_issues', args: { query: 'repo:x/y' } }, allowed));
   assert.ok(checkCall({ tool: 'search_issues', args: { owner: 'tksugimoto', repo: 'a', query: 'x' } }, allowed));
   assert.ok(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto' } }, allowed));
+  // repo を取らない Projects のツールは、使わない repo を足しても通さない。
+  for (const tool of ['projects_list', 'projects_write', 'list_project_items']) {
+    assert.ok(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', project_number: 1 } }, allowed), tool);
+  }
   assert.equal(checkCall({ tool: 'get_me', args: {} }, allowed), null);
 });
 
