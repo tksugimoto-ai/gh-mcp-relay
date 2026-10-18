@@ -1,6 +1,0 @@
-name = "gh-mcp-relay"
-main = "src/index.js"
-compatibility_date = "2026-10-01"
-
-# key の署名用の鍵は secret に入れる（repo には置かない）。
-#   npx wrangler secret put KEY_SECRET < .key-secret   （作り方は README）
