@@ -27,6 +27,8 @@ Claude Code の cloud セッションには、次の制約があります。
 - 各パスは、その環境にだけ置いた key（環境変数 `UPSTREAM_KEY`）を持つセッションからしか使えない。
 - 届く repo の範囲は、GitHub App の install 先で GitHub が強制する。中継は token を保存しない。
 
+ほかに検討した方式や、前提にした制約は [docs/design.md](docs/design.md) にまとめています。
+
 ## 全体像
 
 ```

@@ -3,10 +3,11 @@
 mkdir -p ~/.claude
 
 # ほかの環境用のコネクタを見えなくする（任意。名前は /mcp か ListConnectors で確認する）。
+# 表示名だけだと、UUID 名の同じコネクタがすり抜けるので、両方を書く。
 cat > ~/.claude/settings.json <<'JSON'
 {"deniedMcpServers":[
-  {"serverName":"claude.ai GitHub booking-app"},
-  {"serverName":"fd72c50c-ef3b-4309-9d3c-1c2fc8a1d2f7"}
+  {"serverName":"claude.ai <ほかの環境用コネクタの表示名>"},
+  {"serverName":"<そのコネクタの UUID 名>"}
 ]}
 JSON
 
