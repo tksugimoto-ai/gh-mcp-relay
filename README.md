@@ -86,7 +86,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 本流の所有者ごとに作ります（例: 個人用、org 用）。private 設定の App は所有者のアカウントにしか install できないので、org の App と個人の App は分かれます。
 
 - 権限: Issues（Read & write）、Pull requests（Read & write）、Metadata（Read）
-- Callback URL: claude.ai のコネクタ登録画面に表示される URL（`https://claude.ai/api/mcp/auth_callback` と思われる）。ローカルの Claude Code でも使うなら、その URL も足す
+- Callback URL: claude.ai のコネクタ登録画面に表示される URL（`https://claude.ai/api/mcp/auth_callback` と思われる）
 - 「Expire user authorization tokens」は ON のまま（Claude が refresh token で更新する）
 - 本流に install する（Only select repositories）
 
@@ -121,8 +121,9 @@ cloud では、本流ごとに専用の環境を作り、次を設定します�
 
 ### ローカルの Claude Code で使う場合
 
-- コネクタは1つだけ登録すればよい（claude.ai のコネクタをそのまま使うか、ユーザースコープで `claude mcp add --transport http gh-relay <URL>`）。
-- key はプロジェクトごとに、commit しない `.claude/settings.local.json` の `env` に置き、プロジェクトの `CLAUDE.local.md` などで `upstream_key` に渡すよう書く。
+claude.ai のアカウントでログインしたローカルの Claude Code には、claude.ai のコネクタがそのまま出てきます。コネクタの登録と認可は cloud と共有でき、ローカル用に登録し直す必要はありません。
+
+- key はプロジェクトの `CLAUDE.local.md`（commit しない）に、cloud の `~/.claude/CLAUDE.md` と同じ文面で書く。
 - 手元の `gh` や git の認証がメインアカウントのままだと、この仕組みの意味がなくなります。AI 用には `GH_CONFIG_DIR` を分けるか、コンテナの中で動かしてください。
 
 ## key の取り消し
