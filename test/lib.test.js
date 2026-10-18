@@ -7,7 +7,6 @@ import {
   createKey,
   injectKeyParam,
   matchRoute,
-  parseHosts,
   reposInArgs,
   resourceMetadata,
   stripKey,
@@ -17,32 +16,32 @@ import {
 const SECRET = 'test-secret';
 const NOW = Date.parse('2026-10-18T00:00:00Z');
 
-test('matchRoute: パスから転送先を決める', () => {
-  assert.deepEqual(matchRoute('/api.githubcopilot.com/mcp/x/issues,pull_requests'), {
+test('matchRoute: パスをそのまま公式 GitHub MCP に渡す', () => {
+  assert.deepEqual(matchRoute('/mcp/x/issues,pull_requests'), {
     kind: 'endpoint',
-    path: 'api.githubcopilot.com/mcp/x/issues,pull_requests',
+    path: '/mcp/x/issues,pull_requests',
     upstream: 'https://api.githubcopilot.com/mcp/x/issues,pull_requests',
   });
-  assert.deepEqual(matchRoute('/org-app/api.githubcopilot.com/mcp/'), {
-    kind: 'endpoint',
-    path: 'org-app/api.githubcopilot.com/mcp/',
-    upstream: 'https://api.githubcopilot.com/mcp/',
+  assert.equal(matchRoute('/mcp/').upstream, 'https://api.githubcopilot.com/mcp/');
+  assert.deepEqual(matchRoute('/.well-known/oauth-protected-resource/mcp/x/issues'), {
+    kind: 'metadata',
+    path: '/mcp/x/issues',
+    upstream: 'https://api.githubcopilot.com/mcp/x/issues',
   });
-  assert.equal(matchRoute('/.well-known/oauth-protected-resource/api.githubcopilot.com/mcp/').kind, 'metadata');
 });
 
-test('matchRoute: 許可していないホストや怪しいパスは拒否する', () => {
-  assert.equal(matchRoute('/evil.example.com/mcp'), null);
-  assert.equal(matchRoute('/api.githubcopilot.com/../mcp'), null);
-  assert.equal(matchRoute('/api.githubcopilot.com/mcp?x=1'), null);
+test('matchRoute: /mcp 以外や怪しいパスは拒否する', () => {
   assert.equal(matchRoute('/'), null);
-  assert.equal(matchRoute('/a/b/api.githubcopilot.com/mcp'), null);
-  assert.ok(matchRoute('/other.example.com/mcp', parseHosts('other.example.com')));
+  assert.equal(matchRoute('/user'), null);
+  assert.equal(matchRoute('/mcpx'), null);
+  assert.equal(matchRoute('/mcp/../user'), null);
+  assert.equal(matchRoute('/mcp/x?y'), null);
+  assert.equal(matchRoute('/.well-known/oauth-protected-resource/user'), null);
 });
 
 test('resourceMetadata: GitHub を認可サーバーとして返す', () => {
-  assert.deepEqual(resourceMetadata('https://relay.example.com', 'api.githubcopilot.com/mcp/'), {
-    resource: 'https://relay.example.com/api.githubcopilot.com/mcp/',
+  assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/'), {
+    resource: 'https://relay.example.com/mcp/',
     authorization_servers: ['https://github.com/login/oauth'],
     bearer_methods_supported: ['header'],
   });

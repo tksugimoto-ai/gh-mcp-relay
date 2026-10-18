@@ -1,46 +1,34 @@
 // 中継の判定ロジック。Workers と Node（テスト）の両方で動くよう、Web 標準 API だけを使う。
 
 export const KEY_ARG = 'upstream_key';
-export const DEFAULT_UPSTREAM_HOSTS = ['api.githubcopilot.com'];
+// 転送先。コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたもの。
+export const UPSTREAM_ORIGIN = 'https://api.githubcopilot.com';
 
 const KEY_PREFIX = 'gh-mcp-relay';
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const EXPIRES_RE = /^\d{4}-\d{2}-\d{2}$/;
 const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
-// 転送先のパスに使ってよい文字。`..` は別に弾く。
-const UPSTREAM_PATH_RE = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._,-]+)*\/?$/;
+// 転送してよいパス。公式 GitHub MCP の `/mcp` 以下だけで、`..` は別に弾く。
+const UPSTREAM_PATH_RE = /^\/mcp(\/[A-Za-z0-9._,-]+)*\/?$/;
 
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
 
-// URL のパスから、転送先を決める。パスは `/<ホスト>/<転送先のパス>`（https:// を除いた転送先の URL）。
-// 同じ URL のコネクタは claude.ai に2つ登録できないので、GitHub App ごとにコネクタを分けたいときは
-// 先頭にドットを含まないラベルを付けられる（`/<ラベル>/<ホスト>/...`）。ラベルは転送先に影響しない。
-export function matchRoute(pathname, allowedHosts = DEFAULT_UPSTREAM_HOSTS) {
+// URL のパスから、転送先を決める。パスはそのまま公式 GitHub MCP に渡す。
+export function matchRoute(pathname) {
   let kind = 'endpoint';
-  let rest = pathname.slice(1);
+  let path = pathname;
   if (pathname.startsWith(METADATA_PREFIX)) {
     kind = 'metadata';
-    rest = pathname.slice(METADATA_PREFIX.length);
+    path = pathname.slice(METADATA_PREFIX.length - 1);
   }
-  if (!UPSTREAM_PATH_RE.test(rest) || rest.split('/').includes('..')) return null;
-  const upstreamPath = /^[A-Za-z0-9_-]+\//.test(rest) ? rest.slice(rest.indexOf('/') + 1) : rest;
-  const host = upstreamPath.split('/')[0].toLowerCase();
-  if (!allowedHosts.includes(host)) return null;
-  return { kind, path: rest, upstream: `https://${upstreamPath}` };
-}
-
-export function parseHosts(text) {
-  if (!text) return DEFAULT_UPSTREAM_HOSTS;
-  return text
-    .split(',')
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean);
+  if (!UPSTREAM_PATH_RE.test(path) || path.split('/').includes('..')) return null;
+  return { kind, path, upstream: `${UPSTREAM_ORIGIN}${path}` };
 }
 
 export function resourceMetadata(origin, path) {
   return {
-    resource: `${origin}/${path}`,
+    resource: `${origin}${path}`,
     authorization_servers: ['https://github.com/login/oauth'],
     bearer_methods_supported: ['header'],
   };

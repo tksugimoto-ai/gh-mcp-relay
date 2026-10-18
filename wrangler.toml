@@ -3,8 +3,4 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 
 # key の署名用の鍵は secret に入れる（repo には置かない）。
-#   openssl rand -base64 32 | npx wrangler secret put KEY_SECRET
-#
-# 転送してよいホスト。省略時は api.githubcopilot.com だけ。
-# [vars]
-# UPSTREAM_HOSTS = "api.githubcopilot.com"
+#   npx wrangler secret put KEY_SECRET < .key-secret   （作り方は README）

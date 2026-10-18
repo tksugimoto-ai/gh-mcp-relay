@@ -52,12 +52,15 @@ cloud 環境「pocket-ssh-agent」のセッション
 
 | もの | 例 |
 | --- | --- |
-| claude.ai に登録するコネクタの URL | `https://gh-mcp-relay.<アカウント>.workers.dev/api.githubcopilot.com/mcp/x/issues,pull_requests` |
-| GitHub App ごとにコネクタを分けるとき | `https://gh-mcp-relay.<アカウント>.workers.dev/org-app/api.githubcopilot.com/mcp/x/issues,pull_requests` |
+| 公式 GitHub MCP の URL | `https://api.githubcopilot.com/mcp/x/issues,pull_requests` |
+| claude.ai に登録するコネクタの URL | `https://gh-mcp-relay.<アカウント>.workers.dev/mcp/x/issues,pull_requests` |
+| GitHub App ごとにコネクタを分けるとき | `https://gh-mcp-relay-org.<アカウント>.workers.dev/mcp/x/issues,pull_requests` |
 | key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:849E1kvgMpGA0vXKG9LblAa0Tdz02uWjjMHQAUWMWFM` |
 | key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
 
-URL のパスは、本来登録する公式 GitHub MCP の URL から `https://` を除いたものです。転送先のホストは `UPSTREAM_HOSTS`（省略時は `api.githubcopilot.com` だけ）で縛ります。claude.ai では同じ URL のコネクタを2つ登録できないので、GitHub App ごとにコネクタを分けるときは、先頭にラベル（ドットを含まない名前）を付けます。
+コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスも `/mcp` 以下だけを受け付けます。
+
+claude.ai では同じ URL のコネクタを2つ登録できません。GitHub App ごと（個人用・org 用）にコネクタを分けるときは、中継を別のホスト名でも公開し（同じ Worker を別名でデプロイする、またはカスタムドメインを足す）、ホストで URL を分けます。
 
 key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形です。中身は読めるので、どの repo 用の key か見ればわかります。署名は HMAC-SHA256 で、署名用の鍵（`KEY_SECRET`）を持つ人しか作れません。
 
@@ -97,6 +100,13 @@ npm install
 openssl rand -base64 32 > .key-secret             # 署名用の鍵。手元に安全に保管する
 npx wrangler secret put KEY_SECRET < .key-secret
 npm run deploy
+```
+
+GitHub App を2つ目以降に足すときは、同じコードを別の名前でもデプロイし、同じ `KEY_SECRET` を入れます。
+
+```bash
+npx wrangler deploy --name gh-mcp-relay-org
+npx wrangler secret put KEY_SECRET --name gh-mcp-relay-org < .key-secret
 ```
 
 ### 3. claude.ai にコネクタを登録する（GitHub App ごとに1回）

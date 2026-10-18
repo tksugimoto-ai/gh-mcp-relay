@@ -6,7 +6,7 @@ import { KEY_ARG, createKey } from '../src/lib.js';
 
 const SECRET = 'test-secret';
 const UPSTREAM = 'https://api.githubcopilot.com/mcp/x/issues,pull_requests';
-const ENDPOINT = 'https://relay.example.com/api.githubcopilot.com/mcp/x/issues,pull_requests';
+const ENDPOINT = 'https://relay.example.com/mcp/x/issues,pull_requests';
 const env = { KEY_SECRET: SECRET };
 let KEY;
 before(async () => {
@@ -43,7 +43,7 @@ const repoArgs = { owner: 'tksugimoto', repo: 'pocket-ssh-agent' };
 test('メタデータは token なしで返す', async () => {
   stubFetch();
   const res = await worker.fetch(
-    new Request('https://relay.example.com/.well-known/oauth-protected-resource/api.githubcopilot.com/mcp/x/issues,pull_requests'),
+    new Request('https://relay.example.com/.well-known/oauth-protected-resource/mcp/x/issues,pull_requests'),
     env,
   );
   assert.equal(res.status, 200);
@@ -56,12 +56,15 @@ test('token なしは 401 とメタデータの場所', async () => {
   stubFetch();
   const res = await worker.fetch(new Request(ENDPOINT, { method: 'POST', body: '{}' }), env);
   assert.equal(res.status, 401);
-  assert.match(res.headers.get('www-authenticate'), /oauth-protected-resource\/api\.githubcopilot\.com\/mcp/);
+  assert.equal(
+    res.headers.get('www-authenticate'),
+    'Bearer resource_metadata="https://relay.example.com/.well-known/oauth-protected-resource/mcp/x/issues,pull_requests"',
+  );
 });
 
-test('許可していないホストは 404', async () => {
+test('/mcp 以外のパスは 404', async () => {
   stubFetch();
-  const res = await worker.fetch(new Request('https://relay.example.com/evil.example.com/mcp', { method: 'POST' }), env);
+  const res = await worker.fetch(new Request('https://relay.example.com/user', { method: 'POST' }), env);
   assert.equal(res.status, 404);
 });
 

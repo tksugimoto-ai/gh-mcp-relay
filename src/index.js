@@ -1,9 +1,9 @@
 // GitHub MCP 用の薄い中継。
 // - 認可（OAuth）は Claude のコネクタと GitHub に任せ、token は確かめずにそのまま転送する。保存もしない。
 // - 確かめるのは、ツール呼び出しの upstream_key と、その key が許す repo だけ。
-// - 転送先はパスに書く（`/[<ラベル>/]<https:// を除いた公式 GitHub MCP の URL>`）。中継は設定ファイルを持たない。
+// - パスはそのまま公式 GitHub MCP（api.githubcopilot.com）に渡す。中継は設定ファイルを持たない。
 
-import { checkCall, hasMethod, injectKeyParam, matchRoute, parseHosts, resourceMetadata, stripKey, verifyKey } from './lib.js';
+import { checkCall, hasMethod, injectKeyParam, matchRoute, resourceMetadata, stripKey, verifyKey } from './lib.js';
 
 const FORWARD_REQUEST_HEADERS = ['authorization', 'content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'];
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'mcp-session-id', 'cache-control'];
@@ -11,7 +11,7 @@ const FORWARD_RESPONSE_HEADERS = ['content-type', 'mcp-session-id', 'cache-contr
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const route = matchRoute(url.pathname, parseHosts(env.UPSTREAM_HOSTS));
+    const route = matchRoute(url.pathname);
     if (!route) return text(404, 'not found');
     if (!env.KEY_SECRET) {
       console.error('KEY_SECRET is not set');
@@ -72,7 +72,7 @@ export default {
 };
 
 function unauthorized(origin, path) {
-  const metadataUrl = `${origin}/.well-known/oauth-protected-resource/${path}`;
+  const metadataUrl = `${origin}/.well-known/oauth-protected-resource${path}`;
   return new Response('unauthorized', {
     status: 401,
     headers: { 'www-authenticate': `Bearer resource_metadata="${metadataUrl}"` },

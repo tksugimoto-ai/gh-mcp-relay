@@ -74,7 +74,10 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 ### 転送先の URL
 
-コネクタの URL のパスに、本来登録する公式 GitHub MCP の URL（`https://` を除く）をそのまま書きます。転送先のホストは `UPSTREAM_HOSTS` で縛ります。claude.ai では同じ URL のコネクタを2つ登録できないので、GitHub App ごとにコネクタを分けるときは、先頭にラベルを付けます。
+コネクタの URL は、公式 GitHub MCP の URL（`https://api.githubcopilot.com/mcp/...`）のホスト部分だけを中継のものに置き換えたものにします。登録する人にとってルールがわかりやすく、中継はパスをそのまま転送するだけで済みます。
+
+- この中継は GitHub 専用で、汎用の MCP 中継にはしない。転送先は `api.githubcopilot.com` に固定し、パスも `/mcp` 以下だけを受け付ける（token をほかの API に流さないため）。
+- claude.ai では同じ URL のコネクタを2つ登録できない。GitHub App ごとにコネクタを分けるときは、中継を別のホスト名でも公開し、ホストで URL を分ける（パスにラベルを入れると「ホストだけ置き換える」ルールが崩れるため）。
 
 ### ツールの扱い
 
