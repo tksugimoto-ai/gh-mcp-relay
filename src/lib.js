@@ -1,68 +1,125 @@
 // 中継の判定ロジック。Workers と Node（テスト）の両方で動くよう、Web 標準 API だけを使う。
 
 export const KEY_ARG = 'upstream_key';
+export const DEFAULT_UPSTREAM_HOSTS = ['api.githubcopilot.com'];
 
-const ENDPOINT_RE = /^\/e\/([A-Za-z0-9_-]{1,64})\/mcp\/?$/;
-const METADATA_RE = /^\/\.well-known\/oauth-protected-resource\/e\/([A-Za-z0-9_-]{1,64})\/mcp\/?$/;
+const KEY_PREFIX = 'gh-mcp-relay';
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const EXPIRES_RE = /^\d{4}-\d{2}-\d{2}$/;
+const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
+// 転送先のパスに使ってよい文字。`..` は別に弾く。
+const UPSTREAM_PATH_RE = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._,-]+)*\/?$/;
 
-// URL のパスから、どのパス設定を使うかを決める。
-export function matchRoute(pathname) {
-  let m = ENDPOINT_RE.exec(pathname);
-  if (m) return { kind: 'endpoint', name: m[1] };
-  m = METADATA_RE.exec(pathname);
-  if (m) return { kind: 'metadata', name: m[1] };
-  return null;
-}
+// owner/repo を取らないが、どの repo にも届かないので許すツール。
+const REPOLESS_TOOLS = new Set(['get_me']);
 
-// 環境変数 PATHS_JSON を読み、形を検証する。不正なら例外。
-export function parseConfig(text) {
-  const config = JSON.parse(text);
-  if (!config || typeof config.paths !== 'object') throw new Error('PATHS_JSON: "paths" がない');
-  for (const [name, entry] of Object.entries(config.paths)) {
-    if (!/^[0-9a-f]{64}$/.test(entry.key_sha256 ?? '')) throw new Error(`${name}: key_sha256 が不正`);
-    if (!Array.isArray(entry.allowed_logins) || entry.allowed_logins.length === 0) {
-      throw new Error(`${name}: allowed_logins が空`);
-    }
-    const upstream = new URL(entry.upstream);
-    if (upstream.protocol !== 'https:') throw new Error(`${name}: upstream は https のみ`);
+// URL のパスから、転送先を決める。パスは `/<ホスト>/<転送先のパス>`（https:// を除いた転送先の URL）。
+// 同じ URL のコネクタは claude.ai に2つ登録できないので、GitHub App ごとにコネクタを分けたいときは
+// 先頭にドットを含まないラベルを付けられる（`/<ラベル>/<ホスト>/...`）。ラベルは転送先に影響しない。
+export function matchRoute(pathname, allowedHosts = DEFAULT_UPSTREAM_HOSTS) {
+  let kind = 'endpoint';
+  let rest = pathname.slice(1);
+  if (pathname.startsWith(METADATA_PREFIX)) {
+    kind = 'metadata';
+    rest = pathname.slice(METADATA_PREFIX.length);
   }
-  return config;
+  if (!UPSTREAM_PATH_RE.test(rest) || rest.split('/').includes('..')) return null;
+  const upstreamPath = /^[A-Za-z0-9_-]+\//.test(rest) ? rest.slice(rest.indexOf('/') + 1) : rest;
+  const host = upstreamPath.split('/')[0].toLowerCase();
+  if (!allowedHosts.includes(host)) return null;
+  return { kind, path: rest, upstream: `https://${upstreamPath}` };
 }
 
-export function isActive(entry, now) {
-  if (entry.enabled === false) return false;
-  if (entry.expires && now >= Date.parse(entry.expires)) return false;
-  return true;
+export function parseHosts(text) {
+  if (!text) return DEFAULT_UPSTREAM_HOSTS;
+  return text
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
 }
 
-export function resourceMetadata(origin, name) {
+export function resourceMetadata(origin, path) {
   return {
-    resource: `${origin}/e/${name}/mcp`,
+    resource: `${origin}/${path}`,
     authorization_servers: ['https://github.com/login/oauth'],
     bearer_methods_supported: ['header'],
   };
 }
 
-export async function sha256Hex(text) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+function base64url(bytes) {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// 長さが同じ16進文字列どうしを、内容によらず同じ時間で比べる。
-export function timingSafeEqualHex(a, b) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+function fromBase64url(text) {
+  const binary = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
-export async function keyMatches(key, keySha256) {
-  if (typeof key !== 'string' || key.length === 0) return false;
-  return timingSafeEqualHex(await sha256Hex(key), keySha256);
+function hmacKey(secret, usage) {
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [usage]);
+}
+
+// key を作る。形は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>`。
+// 中身は読めるままにして、末尾の署名（HMAC-SHA256）で改ざんを防ぐ。
+export async function createKey(secret, { repos, expires }) {
+  if (!Array.isArray(repos) || repos.length === 0) throw new Error('repos が空');
+  for (const repo of repos) {
+    if (!REPO_RE.test(repo)) throw new Error(`repo の形が不正: ${repo}`);
+  }
+  if (expires && !EXPIRES_RE.test(expires)) throw new Error(`expires は YYYY-MM-DD: ${expires}`);
+  const fields = [KEY_PREFIX, repos.map((r) => r.toLowerCase()).join(','), ...(expires ? [expires] : [])];
+  const signed = fields.join(':');
+  const signature = await crypto.subtle.sign('HMAC', await hmacKey(secret, 'sign'), new TextEncoder().encode(signed));
+  return `${signed}:${base64url(new Uint8Array(signature))}`;
+}
+
+// key の署名と期限を確かめ、許可する repo の一覧を返す。不正なら null。
+export async function verifyKey(secret, key, now) {
+  if (typeof key !== 'string') return null;
+  const fields = key.split(':');
+  if (fields[0] !== KEY_PREFIX || (fields.length !== 3 && fields.length !== 4)) return null;
+  const signature = fields.pop();
+  try {
+    const ok = await crypto.subtle.verify(
+      'HMAC',
+      await hmacKey(secret, 'verify'),
+      fromBase64url(signature),
+      new TextEncoder().encode(fields.join(':')),
+    );
+    if (!ok) return null;
+  } catch {
+    return null;
+  }
+  const [, repos, expires] = fields;
+  if (expires && !(now < Date.parse(`${expires}T00:00:00Z`))) return null;
+  return { repos: repos.split(','), expires };
+}
+
+// ツール引数に出てくる owner/repo の組をすべて取り出す（owner と repo、parent_owner と parent_repo など）。
+export function reposInArgs(args) {
+  const found = [];
+  for (const [name, owner] of Object.entries(args ?? {})) {
+    if (!name.endsWith('owner')) continue;
+    const repo = args[`${name.slice(0, -'owner'.length)}repo`];
+    found.push(`${owner}/${repo}`.toLowerCase());
+  }
+  return found;
+}
+
+// tools/call を key の範囲で許すか。許さないときは理由を返す。
+export function checkCall(call, allowedRepos) {
+  const repos = reposInArgs(call.args);
+  if (repos.length === 0) {
+    return REPOLESS_TOOLS.has(call.tool) ? null : 'owner と repo を取らないツールは使えません';
+  }
+  const denied = repos.find((r) => !allowedRepos.includes(r));
+  return denied ? `${denied} はこの key で許可されていません` : null;
 }
 
 // JSON-RPC のメッセージ（単体または配列）から tools/call の upstream_key を取り出し、
-// 転送前に引数から消す。中身の解析はこの1点だけに限る。
+// 転送前に引数から消す。
 export function stripKey(message) {
   const list = Array.isArray(message) ? message : [message];
   const calls = [];
@@ -71,7 +128,7 @@ export function stripKey(message) {
     const args = { ...(msg.params?.arguments ?? {}) };
     const key = args[KEY_ARG];
     delete args[KEY_ARG];
-    calls.push({ id: msg.id, tool: msg.params?.name, key });
+    calls.push({ id: msg.id, tool: msg.params?.name, key, args });
     return { ...msg, params: { ...msg.params, arguments: args } };
   });
   return { message: Array.isArray(message) ? out : out[0], calls };
@@ -84,7 +141,7 @@ export function hasMethod(message, method) {
 
 const KEY_PROPERTY = {
   type: 'string',
-  description: '環境の UPSTREAM_KEY の値（~/.claude/CLAUDE.md に記載）。どのツールでも必須。',
+  description: 'この環境の UPSTREAM_KEY の値。どのツールでも必須。',
 };
 
 // tools/list の結果の各ツールに upstream_key 引数を足す。Claude が引数を渡し忘れないようにするため。

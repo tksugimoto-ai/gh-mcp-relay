@@ -1,7 +1,13 @@
-// 環境用の key を発行し、環境変数に入れる値と PATHS_JSON に入れるハッシュ値を表示する。
-import { randomBytes } from 'node:crypto';
-import { sha256Hex } from '../src/lib.js';
+// 環境用の key を発行する。署名用の鍵 KEY_SECRET を持っている人だけが発行できる。
+//   KEY_SECRET=... npm run new-key -- tksugimoto/pocket-ssh-agent [owner/repo ...] [--expires 2027-04-01]
+import { createKey } from '../src/lib.js';
 
-const key = `k_${randomBytes(24).toString('base64url')}`;
-console.log(`UPSTREAM_KEY (環境変数に入れる): ${key}`);
-console.log(`key_sha256  (PATHS_JSON に入れる): ${await sha256Hex(key)}`);
+const args = process.argv.slice(2);
+const i = args.indexOf('--expires');
+const expires = i >= 0 ? args.splice(i, 2)[1] : undefined;
+const secret = process.env.KEY_SECRET;
+if (!secret || args.length === 0) {
+  console.error('使い方: KEY_SECRET=... npm run new-key -- <owner/repo> [owner/repo ...] [--expires YYYY-MM-DD]');
+  process.exit(1);
+}
+console.log(await createKey(secret, { repos: args, expires }));

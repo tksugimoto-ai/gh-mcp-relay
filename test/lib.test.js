@@ -3,73 +3,91 @@ import { test } from 'node:test';
 
 import {
   KEY_ARG,
+  checkCall,
+  createKey,
   injectKeyParam,
-  isActive,
-  keyMatches,
   matchRoute,
-  parseConfig,
+  parseHosts,
+  reposInArgs,
   resourceMetadata,
-  sha256Hex,
   stripKey,
+  verifyKey,
 } from '../src/lib.js';
 
-const KEY = 'k_test_key';
-const validEntry = async () => ({
-  key_sha256: await sha256Hex(KEY),
-  allowed_logins: ['tksugimoto-ai'],
-  upstream: 'https://api.githubcopilot.com/mcp/x/issues,pull_requests',
-});
+const SECRET = 'test-secret';
+const NOW = Date.parse('2026-10-18T00:00:00Z');
 
-test('matchRoute: エンドポイントとメタデータを見分ける', () => {
-  assert.deepEqual(matchRoute('/e/pocket-ssh-agent/mcp'), { kind: 'endpoint', name: 'pocket-ssh-agent' });
-  assert.deepEqual(matchRoute('/.well-known/oauth-protected-resource/e/pocket-ssh-agent/mcp'), {
-    kind: 'metadata',
-    name: 'pocket-ssh-agent',
+test('matchRoute: パスから転送先を決める', () => {
+  assert.deepEqual(matchRoute('/api.githubcopilot.com/mcp/x/issues,pull_requests'), {
+    kind: 'endpoint',
+    path: 'api.githubcopilot.com/mcp/x/issues,pull_requests',
+    upstream: 'https://api.githubcopilot.com/mcp/x/issues,pull_requests',
   });
-  assert.equal(matchRoute('/e/../mcp'), null);
-  assert.equal(matchRoute('/e/a/b/mcp'), null);
+  assert.deepEqual(matchRoute('/org-app/api.githubcopilot.com/mcp/'), {
+    kind: 'endpoint',
+    path: 'org-app/api.githubcopilot.com/mcp/',
+    upstream: 'https://api.githubcopilot.com/mcp/',
+  });
+  assert.equal(matchRoute('/.well-known/oauth-protected-resource/api.githubcopilot.com/mcp/').kind, 'metadata');
+});
+
+test('matchRoute: 許可していないホストや怪しいパスは拒否する', () => {
+  assert.equal(matchRoute('/evil.example.com/mcp'), null);
+  assert.equal(matchRoute('/api.githubcopilot.com/../mcp'), null);
+  assert.equal(matchRoute('/api.githubcopilot.com/mcp?x=1'), null);
   assert.equal(matchRoute('/'), null);
-});
-
-test('parseConfig: 不正な設定を拒否する', async () => {
-  const entry = await validEntry();
-  assert.ok(parseConfig(JSON.stringify({ paths: { a: entry } })));
-  assert.throws(() => parseConfig(JSON.stringify({ paths: { a: { ...entry, key_sha256: 'x' } } })));
-  assert.throws(() => parseConfig(JSON.stringify({ paths: { a: { ...entry, allowed_logins: [] } } })));
-  assert.throws(() => parseConfig(JSON.stringify({ paths: { a: { ...entry, upstream: 'http://example.com' } } })));
-  assert.throws(() => parseConfig('{}'));
-});
-
-test('isActive: enabled と expires を見る', () => {
-  const now = Date.parse('2026-10-17T00:00:00Z');
-  assert.equal(isActive({}, now), true);
-  assert.equal(isActive({ enabled: false }, now), false);
-  assert.equal(isActive({ expires: '2026-10-16' }, now), false);
-  assert.equal(isActive({ expires: '2027-01-01' }, now), true);
+  assert.equal(matchRoute('/a/b/api.githubcopilot.com/mcp'), null);
+  assert.ok(matchRoute('/other.example.com/mcp', parseHosts('other.example.com')));
 });
 
 test('resourceMetadata: GitHub を認可サーバーとして返す', () => {
-  assert.deepEqual(resourceMetadata('https://relay.example.com', 'x'), {
-    resource: 'https://relay.example.com/e/x/mcp',
+  assert.deepEqual(resourceMetadata('https://relay.example.com', 'api.githubcopilot.com/mcp/'), {
+    resource: 'https://relay.example.com/api.githubcopilot.com/mcp/',
     authorization_servers: ['https://github.com/login/oauth'],
     bearer_methods_supported: ['header'],
   });
 });
 
-test('keyMatches: 正しい key だけ通す', async () => {
-  const { key_sha256 } = await validEntry();
-  assert.equal(await keyMatches(KEY, key_sha256), true);
-  assert.equal(await keyMatches('k_other', key_sha256), false);
-  assert.equal(await keyMatches(undefined, key_sha256), false);
-  assert.equal(await keyMatches('', key_sha256), false);
+test('createKey / verifyKey: 読める形で、署名を確かめる', async () => {
+  const key = await createKey(SECRET, { repos: ['tksugimoto/pocket-ssh-agent', 'tksugimoto/Sub'] });
+  assert.match(key, /^gh-mcp-relay:tksugimoto\/pocket-ssh-agent,tksugimoto\/sub:[A-Za-z0-9_-]+$/);
+  assert.deepEqual((await verifyKey(SECRET, key, NOW)).repos, ['tksugimoto/pocket-ssh-agent', 'tksugimoto/sub']);
+  assert.equal(await verifyKey('other-secret', key, NOW), null);
+});
+
+test('verifyKey: 書き換えた key と期限切れを拒否する', async () => {
+  const key = await createKey(SECRET, { repos: ['tksugimoto/a'], expires: '2026-10-19' });
+  assert.ok(await verifyKey(SECRET, key, NOW));
+  assert.equal(await verifyKey(SECRET, key, Date.parse('2026-10-19T00:00:00Z')), null);
+  assert.equal(await verifyKey(SECRET, key.replace('tksugimoto/a', 'tksugimoto/b'), NOW), null);
+  assert.equal(await verifyKey(SECRET, key.replace('2026-10-19', '2099-01-01'), NOW), null);
+  assert.equal(await verifyKey(SECRET, undefined, NOW), null);
+  assert.equal(await verifyKey(SECRET, 'gh-mcp-relay:x/y:!!', NOW), null);
+});
+
+test('createKey: 不正な入力を拒否する', async () => {
+  await assert.rejects(createKey(SECRET, { repos: [] }));
+  await assert.rejects(createKey(SECRET, { repos: ['no-slash'] }));
+  await assert.rejects(createKey(SECRET, { repos: ['a/b:c'] }));
+  await assert.rejects(createKey(SECRET, { repos: ['a/b'], expires: 'tomorrow' }));
+});
+
+test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確かめる', () => {
+  assert.deepEqual(reposInArgs({ owner: 'A', repo: 'B', parent_owner: 'c', parent_repo: 'd', title: 'x' }), ['a/b', 'c/d']);
+  const allowed = ['tksugimoto/a'];
+  assert.equal(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
+  assert.match(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'b' } }, allowed), /tksugimoto\/b/);
+  assert.ok(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'a', parent_owner: 'x', parent_repo: 'y' } }, allowed));
+  assert.ok(checkCall({ tool: 'search_issues', args: { query: 'repo:x/y' } }, allowed));
+  assert.equal(checkCall({ tool: 'get_me', args: {} }, allowed), null);
 });
 
 test('stripKey: tools/call の key を取り出して引数から消す', () => {
-  const msg = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_me', arguments: { [KEY_ARG]: KEY, a: 1 } } };
+  const msg = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_me', arguments: { [KEY_ARG]: 'k', a: 1 } } };
   const { message, calls } = stripKey(msg);
   assert.deepEqual(message.params.arguments, { a: 1 });
-  assert.deepEqual(calls, [{ id: 1, tool: 'get_me', key: KEY }]);
-  assert.equal(msg.params.arguments[KEY_ARG], KEY, '元のメッセージは変えない');
+  assert.deepEqual(calls, [{ id: 1, tool: 'get_me', key: 'k', args: { a: 1 } }]);
+  assert.equal(msg.params.arguments[KEY_ARG], 'k', '元のメッセージは変えない');
 });
 
 test('stripKey: tools/call 以外と配列', () => {
@@ -80,7 +98,7 @@ test('stripKey: tools/call 以外と配列', () => {
   const { message, calls } = stripKey(batch);
   assert.deepEqual(message[0], batch[0]);
   assert.deepEqual(message[1].params.arguments, {});
-  assert.deepEqual(calls, [{ id: 2, tool: 'x', key: undefined }]);
+  assert.deepEqual(calls, [{ id: 2, tool: 'x', key: undefined, args: {} }]);
 });
 
 test('injectKeyParam: JSON と SSE の両方で引数を足す', () => {

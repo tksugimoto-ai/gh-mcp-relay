@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
-import { afterEach, test } from 'node:test';
+import { afterEach, before, test } from 'node:test';
 
 import worker from '../src/index.js';
-import { KEY_ARG, sha256Hex } from '../src/lib.js';
+import { KEY_ARG, createKey } from '../src/lib.js';
 
-const KEY = 'k_test_key';
-const UPSTREAM = 'https://upstream.example.com/mcp';
-const env = async () => ({
-  PATHS_JSON: JSON.stringify({
-    paths: { pocket: { key_sha256: await sha256Hex(KEY), allowed_logins: ['tksugimoto-ai'], upstream: UPSTREAM } },
-  }),
+const SECRET = 'test-secret';
+const UPSTREAM = 'https://api.githubcopilot.com/mcp/x/issues,pull_requests';
+const ENDPOINT = 'https://relay.example.com/api.githubcopilot.com/mcp/x/issues,pull_requests';
+const env = { KEY_SECRET: SECRET };
+let KEY;
+before(async () => {
+  KEY = await createKey(SECRET, { repos: ['tksugimoto/pocket-ssh-agent'] });
 });
 
 const realFetch = globalThis.fetch;
@@ -17,80 +18,88 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-// GitHub の /user と転送先を差し替える。転送されたリクエストは forwarded に残す。
-function stubFetch({ login = 'tksugimoto-ai', upstream } = {}) {
+// 転送先を差し替える。転送されたリクエストは forwarded に残す。
+function stubFetch({ upstream } = {}) {
   const forwarded = [];
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
-    if (url === 'https://api.github.com/user') {
-      return login ? Response.json({ login }) : new Response('bad', { status: 401 });
-    }
-    if (url === UPSTREAM) {
-      forwarded.push({ method: init.method, headers: init.headers, body: init.body });
-      return upstream ? upstream(init) : Response.json({ jsonrpc: '2.0', id: 1, result: {} });
-    }
-    throw new Error(`unexpected fetch ${url}`);
+    if (url !== UPSTREAM) throw new Error(`unexpected fetch ${url}`);
+    forwarded.push({ method: init.method, headers: init.headers, body: init.body });
+    return upstream ? upstream(init) : Response.json({ jsonrpc: '2.0', id: 1, result: {} });
   };
   return forwarded;
 }
 
-const call = (body, token = `tok-${Math.random()}`) =>
-  new Request('https://relay.example.com/e/pocket/mcp', {
+const call = (body) =>
+  new Request(ENDPOINT, {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: { authorization: 'Bearer gho_test', 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
 
 const toolCall = (args) => ({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'issue_write', arguments: args } });
+const repoArgs = { owner: 'tksugimoto', repo: 'pocket-ssh-agent' };
 
 test('メタデータは token なしで返す', async () => {
   stubFetch();
-  const res = await worker.fetch(new Request('https://relay.example.com/.well-known/oauth-protected-resource/e/pocket/mcp'), await env());
+  const res = await worker.fetch(
+    new Request('https://relay.example.com/.well-known/oauth-protected-resource/api.githubcopilot.com/mcp/x/issues,pull_requests'),
+    env,
+  );
   assert.equal(res.status, 200);
-  assert.deepEqual((await res.json()).authorization_servers, ['https://github.com/login/oauth']);
+  const body = await res.json();
+  assert.equal(body.resource, ENDPOINT);
+  assert.deepEqual(body.authorization_servers, ['https://github.com/login/oauth']);
 });
 
 test('token なしは 401 とメタデータの場所', async () => {
   stubFetch();
-  const res = await worker.fetch(new Request('https://relay.example.com/e/pocket/mcp', { method: 'POST', body: '{}' }), await env());
+  const res = await worker.fetch(new Request(ENDPOINT, { method: 'POST', body: '{}' }), env);
   assert.equal(res.status, 401);
-  assert.match(res.headers.get('www-authenticate'), /oauth-protected-resource\/e\/pocket\/mcp/);
+  assert.match(res.headers.get('www-authenticate'), /oauth-protected-resource\/api\.githubcopilot\.com\/mcp/);
 });
 
-test('知らないパスは 404', async () => {
+test('許可していないホストは 404', async () => {
   stubFetch();
-  const res = await worker.fetch(new Request('https://relay.example.com/e/other/mcp', { method: 'POST' }), await env());
+  const res = await worker.fetch(new Request('https://relay.example.com/evil.example.com/mcp', { method: 'POST' }), env);
   assert.equal(res.status, 404);
 });
 
-test('許可していない login は 403', async () => {
-  const forwarded = stubFetch({ login: 'someone-else' });
-  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY })), await env());
-  assert.equal(res.status, 403);
-  assert.equal(forwarded.length, 0);
+test('KEY_SECRET が無ければ 500', async () => {
+  stubFetch();
+  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY, ...repoArgs })), {});
+  assert.equal(res.status, 500);
 });
 
 test('key が違う tools/call は転送しない', async () => {
   const forwarded = stubFetch();
-  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: 'k_wrong', title: 'x' })), await env());
+  const wrong = await createKey('other-secret', { repos: ['tksugimoto/pocket-ssh-agent'] });
+  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: wrong, ...repoArgs })), env);
   assert.equal((await res.json()).error.code, -32001);
   assert.equal(forwarded.length, 0);
 });
 
-test('正しい key なら key を消して転送する', async () => {
+test('key が許していない repo は転送しない', async () => {
   const forwarded = stubFetch();
-  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY, title: 'x' })), await env());
+  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY, owner: 'tksugimoto', repo: 'other' })), env);
+  assert.match((await res.json()).error.message, /tksugimoto\/other/);
+  assert.equal(forwarded.length, 0);
+});
+
+test('正しい key と repo なら key を消して転送する', async () => {
+  const forwarded = stubFetch();
+  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY, ...repoArgs, title: 'x' })), env);
   assert.equal(res.status, 200);
   assert.equal(forwarded.length, 1);
-  assert.deepEqual(JSON.parse(forwarded[0].body).params.arguments, { title: 'x' });
-  assert.match(forwarded[0].headers.get('authorization'), /^Bearer tok-/);
+  assert.deepEqual(JSON.parse(forwarded[0].body).params.arguments, { ...repoArgs, title: 'x' });
+  assert.equal(forwarded[0].headers.get('authorization'), 'Bearer gho_test');
 });
 
 test('tools/list の結果に upstream_key を足す', async () => {
   stubFetch({
     upstream: () => Response.json({ jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'get_me', inputSchema: { type: 'object' } }] } }),
   });
-  const res = await worker.fetch(call({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), await env());
+  const res = await worker.fetch(call({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), env);
   const tool = (await res.json()).result.tools[0];
   assert.deepEqual(tool.inputSchema.required, [KEY_ARG]);
 });

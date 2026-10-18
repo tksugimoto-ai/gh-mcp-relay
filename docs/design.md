@@ -2,16 +2,22 @@
 
 この中継がなぜこの形なのかをまとめます。使い方は [README](../README.md) を見てください。
 
-## 目的
+## 背景
 
-AI 用アカウント `tksugimoto-ai` で、fork から本流（upstream）へ Issue と PR を出せるようにする。cloud でもローカルでも同じ仕組みで動かす。
+- AI 用アカウント `tksugimoto-ai` で、fork から本流（upstream）へ Issue と PR を出す。cloud でもローカルでも同じ仕組みで動かす。
+- AI が本流の `main` を変えられない仕組みにする。
+
+## 解決したい課題
+
+claude.ai のコネクタはアカウント単位なので、1つのセッションから全部の GitHub コネクタが見え、それらが届く全部の repo を操作できる。これを、セッションごとに決めた本流の repo だけに絞る（将来 Claude 側が環境ごとのコネクタ管理を提供すれば、この中継は不要になるかもしれない）。
 
 ### 要件
 
 - Issue・PR・コメントは `tksugimoto-ai` の名前で出す。
 - Claude GitHub App は本流に入れない（public も private も）。fork だけに入れる。
 - `tksugimoto-ai` は本流の `main` を変えられない（public なら権限なし、org の private なら Triage）。
-- org の private repo と個人の public repo が、1つのセッションの中で混ざらないようにする。
+- 1つのセッション（環境）で操作できる本流の repo は、基本は1つにする。private と public の間だけでなく、public の repo どうしも混ぜない。
+- submodule の編集などのために、1つのセッションに複数の repo を許すこともできる。
 - 認可の仕組みは Claude と GitHub に任せ、token を自分で管理しない。
 - 新しい repo は、何も設定しなくても本流に届かない状態になる。
 
@@ -39,28 +45,42 @@ cloud セッションでも、`~/.claude/settings.json` の `deniedMcpServers` �
 | --- | --- | --- |
 | fork と本流を1つのセッションに入れる | 不可 | 同名 repo の制約で入らない |
 | collaborator（Write）＋本流に Claude GitHub App | 不採用 | merge できるので `main` への push と実質同じ。Actions の secrets にも届く |
-| 独自コネクタ1つで全本流を扱う | 不採用 | 全セッションから private と public の両方に届き、prompt injection による漏洩の経路ができる |
+| 独自コネクタ1つで全本流を扱う（中継なし） | 不採用 | 全セッションから全部の repo に届き、prompt injection による漏洩の経路ができる |
+| repo の数だけコネクタを登録し、deny で出し分ける | 不採用 | deny は許可リストではないので、コネクタを足すたびに全環境の設定を直す必要がある。設定漏れで開いてしまう |
 | PAT を環境変数 `GH_TOKEN` に入れる | 不可 | GitHub 専用 proxy の repo 範囲で 403 になる見込み。token がセッションから見える |
 | 自作 proxy ＋ネットワークシークレットに PAT | 次点 | token が見えず隔離が強い。ただし PAT を自分で管理し、repo の制限は proxy だけが担う。ローカルでは使えない |
 | ネットワークシークレットでコネクタの利用を絞る | 不可 | MCP の通信は agent proxy を通らないので、シークレットが付かない |
 | 入力済みリンク（compare の URL、`issues/new`） | 代替案 | 混ざらず、本流の設定も要らない。ただし PR の編集やコメントのたびに手作業が要る |
-| 環境ごとの専用コネクタ＋薄い自作 proxy | **採用** | 認可は Claude と GitHub に任せられ、repo の範囲も GitHub が強制する。cloud とローカルで共通 |
+| 薄い自作 proxy ＋ repo を書いた署名つき key | **採用** | 認可は Claude と GitHub に任せられる。key を置かないセッションは何もできず、新しい repo は閉じたまま。中継は状態を持たない。cloud とローカルで共通 |
 
 ## 採用した設計
 
-環境ごとに専用のコネクタを、URL のパスで分けて登録します。中継は、パス・token の持ち主・環境ごとの key だけを確認し、公式 GitHub MCP に転送します。fork への push は、これとは別に fork だけに入れた Claude GitHub App が行います。
+コネクタは GitHub App ごとに1つ登録し、どのセッションからも見えるままにします。そのかわり、セッションに置いた key で、操作できる repo を中継が絞ります。fork への push は、これとは別に fork だけに入れた Claude GitHub App が行います。
 
 | 守るもの | 強制するもの | 仕組み |
 | --- | --- | --- |
-| repo の範囲 | GitHub | 所有者ごと（または環境ごと）の GitHub App を、その本流にだけ install |
+| セッションごとの repo の範囲 | 中継 | key に書いた `owner/repo` と、ツール引数の `owner`/`repo` を照らし合わせる |
+| App が届く repo の範囲 | GitHub | GitHub App の install 先 |
 | 操作の範囲（merge、push） | GitHub | `tksugimoto-ai` の本流での権限 |
-| 環境ごとの利用許可 | 中継 | パスと key の対応。key は環境変数 |
-| 誰の名前で動くか | GitHub と中継 | OAuth の token の持ち主を `allowed_logins` に限る |
-| token の管理 | Claude | コネクタの OAuth。中継は保存しない |
+| 誰の名前で動くか・token の管理 | Claude と GitHub | コネクタの OAuth。中継は token を確かめも保存もしない |
 
-- GitHub App は、少なくとも所有者ごと（org と個人）に分けます。private 設定の App は所有者にしか install できないので、org の private repo と個人の public repo の境界を GitHub 側で守れます。
-- 同じ所有者の repo どうしで App を共用すると、その間の境界は中継だけになります。厳しくしたい repo は専用の App にします。
-- 中継は通信の中身をほぼ解析しません。ツールごとに細かく制限したくなったら、公式サーバーへの転送をやめて、少数の自前ツールを実装します。
+### key
+
+key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形で、署名は `KEY_SECRET` を鍵にした HMAC-SHA256 です。
+
+- 中身が読めるので、どの repo 用の key か人にも Claude にもわかる。書き換えると署名が合わなくなる。
+- 中継は key を記録しない（状態を持たない）。設定ファイルも KV も要らない。そのかわり key を1つずつ取り消せないので、期限を付けて発行し、全部を無効にしたいときは `KEY_SECRET` を入れ替える。
+- 発行は、`KEY_SECRET` を持つ人が手元の CLI で行う。発行用の Web ページは作らない（作るなら、そのページの認証が別に要る）。
+
+### 転送先の URL
+
+コネクタの URL のパスに、本来登録する公式 GitHub MCP の URL（`https://` を除く）をそのまま書きます。転送先のホストは `UPSTREAM_HOSTS` で縛ります。claude.ai では同じ URL のコネクタを2つ登録できないので、GitHub App ごとにコネクタを分けるときは、先頭にラベルを付けます。
+
+### ツールの扱い
+
+- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。
+- `owner`/`repo` を取らないツールは、`get_me` を除いて拒否する。`search_*` はクエリでほかの repo に届くため。
+- 中継は通信の中身をこれ以上は解析しない。ツールごとに細かく制限したくなったら、公式サーバーへの転送をやめて、少数の自前ツールを実装する。
 
 ## cloud の環境構成
 
@@ -68,31 +88,30 @@ cloud セッションでも、`~/.claude/settings.json` の `deniedMcpServers` �
 
 | 環境 | 使う repo（fork） | 環境変数 | セットアップスクリプト |
 | --- | --- | --- | --- |
-| Default | 専用環境のない repo すべて | なし | 中継のコネクタを deny（任意） |
-| 本流ごとの環境 | その本流の fork | `UPSTREAM_KEY=<その環境用>` | ほかの環境のコネクタを deny（任意）、`~/.claude/CLAUDE.md` に使い方 |
+| Default | 専用環境のない repo すべて | なし | なし |
+| 本流ごとの環境 | その本流の fork | `UPSTREAM_KEY=<その repo 用の key>` | `~/.claude/CLAUDE.md` に使い方と key |
 
-- key は推測できないランダムな値にします。環境変数はその環境を使う人とセッションから読めるので、認証情報ではなく「利用許可の合言葉」として扱います。
+- 環境変数はその環境を使う人とセッションから読めるので、key は認証情報ではなく「利用許可の合言葉」として扱います。
 - 使い方の説明は本流の repo に入れず、セットアップスクリプトで `~/.claude/CLAUDE.md` に書き出します。
-- 環境変数 `ENABLE_CLAUDEAI_MCP_SERVERS=false` は全コネクタを止めるだけで個別に戻せないので使いません。
+- 中継を通らない GitHub のコネクタが残っている間は、`deniedMcpServers` で見えなくします（表示名と UUID 名の両方を書く）。
 
 ### repo を1つ足す手順
 
 1. 本流で `tksugimoto-ai` に権限を付ける（private なら Triage、public なら不要）。
 2. 本流を `tksugimoto-ai` に fork する。
-3. 本流の所有者の GitHub App を、本流に install する（Only select repositories）。
-4. 中継にパスを追加し、ランダムな key を発行する。
-5. そのパスの URL を、claude.ai にコネクタとして登録する。
-6. 専用の環境を作り、`UPSTREAM_KEY` とセットアップスクリプトを設定する。
+3. 本流の所有者の GitHub App を、本流に install する（Only select repositories）。その所有者の App がまだなければ、App を作り、コネクタを登録する。
+4. その repo 用の key を発行する（`npm run new-key`）。
+5. 専用の環境を作り、`UPSTREAM_KEY` とセットアップスクリプトを設定する。
 
 ## リスク
 
-この設計が防ぐのは、環境どうしの誤った混在と、repo をまたぐ prompt injection です。同じ環境のセッションによる、許可した範囲内での悪用は防げません。
+この設計が防ぐのは、1つのセッションから key で許していない repo を操作することです（repo をまたぐ prompt injection を含む）。許した repo の中での悪用は防げません。
 
 | リスク | 内容 | 対策 |
 | --- | --- | --- |
-| key がセッションから読める | 別の環境のセッションに key を渡されると、そのパスを使われる | key の定期的な入れ替え、`expires` |
+| key がセッションから読める | 別のセッションに key を書き写されると、その repo を使われる | 期限つきで発行する。必要なら `KEY_SECRET` を入れ替える |
+| key を1つずつ取り消せない | 中継が key を記録しないため | 期限を短めにする。全部を無効にするときは `KEY_SECRET` を入れ替える |
 | fork への git push | 組み込みの GitHub 連携なので、コネクタ側の制御が効かない | private のコネクタは、その環境以外で deny する |
-| deny の列挙漏れ | コネクタの登録し直しで UUID 名が変わる | 登録し直したら確認し直す。deny は多重の守りで、中心は key |
 | 中継を通る通信 | token と PR 本文が中継を通過する | ヘッダーをログに残さない。信頼できるホスティング先に置く |
 | 組み込みの PR 監視 | 本流の PR には効かない | コネクタ経由で PR の状態を読みに行く |
 

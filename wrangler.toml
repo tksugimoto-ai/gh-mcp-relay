@@ -2,5 +2,9 @@ name = "gh-mcp-relay"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
-# パスごとの設定は secret の PATHS_JSON に入れる（repo には置かない）。
-#   npx wrangler secret put PATHS_JSON < paths.json
+# key の署名用の鍵は secret に入れる（repo には置かない）。
+#   openssl rand -base64 32 | npx wrangler secret put KEY_SECRET
+#
+# 転送してよいホスト。省略時は api.githubcopilot.com だけ。
+# [vars]
+# UPSTREAM_HOSTS = "api.githubcopilot.com"

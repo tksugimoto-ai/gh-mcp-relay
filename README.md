@@ -1,132 +1,138 @@
 # gh-mcp-relay
 
-AI 用の GitHub アカウント（`tksugimoto-ai`）で作業する Claude が、fork から本流（upstream）へ Issue や PR を出せるようにするための、GitHub MCP の薄い中継です。Cloudflare Workers で動きます。
+claude.ai の GitHub コネクタ（MCP）を、**セッションごとに決めた本流の repo だけ** に使わせるための中継です。Cloudflare Workers で動きます。
 
 ## 何のためのものか
 
-### やりたいこと
+### これまでの前提
 
-- Claude には AI 用アカウント `tksugimoto-ai` で作業させ、コードの変更は fork（`tksugimoto-ai/<repo>`）に push させる。
-- Issue・PR・コメントは本流（`tksugimoto/<repo>` や org の repo）に、`tksugimoto-ai` の名前で出させる。
-- Claude GitHub App は本流に入れない。入れると Claude が本流を直接触れるようになるため、fork にだけ入れる。
+- Claude は AI 用アカウント `tksugimoto-ai` で作業し、コードの変更は fork（`tksugimoto-ai/<repo>`）に push する。
+- Issue・PR・コメントは本流（`tksugimoto/<repo>` や org の repo）に出す。本流に届く経路は claude.ai のコネクタ（独自 GitHub App のユーザートークンで動く GitHub MCP）。
+- AI は本流の `main` を変えられない（本流での `tksugimoto-ai` の権限で GitHub が強制する）。
 
-### なぜ中継が要るのか
+### 解決したい課題
 
-Claude Code の cloud セッションには、次の制約があります。
+claude.ai のコネクタはアカウント単位なので、**どのセッションにも全部のコネクタが見え、コネクタが届く全部の repo を操作できます**。たとえば repo A の作業中に読んだ Issue に仕込まれた指示（prompt injection）で、repo B（org の private repo など）に書き込まれたり、中身を持ち出されたりするおそれがあります。
 
-- セッションから GitHub に届くのは、セッションに入っている repo（= fork）だけ。本流への API は 403 になる。
-- fork と本流は同じ repo 名なので、1つのセッションに両方は入れられない。
+GitHub App の install 先や公式 GitHub MCP の設定では、これを防げません。
 
-そこで本流への操作は、claude.ai の **コネクタ**（MCP）経由で行います。独自の GitHub App を作って本流にだけ install し、そのユーザートークンで公式 GitHub MCP を呼べば、本流へ Issue・PR を出せます。
+- GitHub App の install 先は「App が届く repo」を決めるだけで、どのセッションから使うかは区別できない。
+- 公式 GitHub MCP の URL で絞れるのは、ツールセットと読み取り専用かどうかだけ。repo は絞れない。
+- claude.ai には、コネクタを環境ごとに出し分ける設定がない（cloud では `deniedMcpServers` で隠せるが、許可リストではないので、コネクタを足すたびに全環境の設定を直す必要がある）。
 
-ただし、claude.ai のコネクタはアカウント単位で、どのセッションからも見えます。コネクタを1つ用意するだけだと、たとえば public の repo を扱うセッションから org の private repo にも届いてしまい、prompt injection で情報が漏れる経路になります。
+### この中継がすること
 
-この中継は、そこを **環境（cloud 環境やローカルのプロジェクト）ごと** に分けるためのものです。
+1つのセッション（cloud の環境、またはローカルのプロジェクト）で操作できる本流の repo を、そのセッションに置いた **key** で決めます。
 
-- コネクタを環境ごとに、URL のパス（`/e/<パス名>/mcp`）で分けて登録する。
-- 各パスは、その環境にだけ置いた key（環境変数 `UPSTREAM_KEY`）を持つセッションからしか使えない。
-- 届く repo の範囲は、GitHub App の install 先で GitHub が強制する。中継は token を保存しない。
+- key には操作してよい `owner/repo` が書かれていて、中継が署名を確かめる。基本は1つ。submodule の編集などで必要なら複数書ける。
+- 中継は、ツール呼び出しの `owner`/`repo` が key の範囲にあるときだけ、公式 GitHub MCP に転送する。
+- key を置いていないセッション（cloud の Default 環境など）からは、コネクタが見えていても何もできない。新しい repo は、何もしなければ閉じた状態になる。
 
-ほかに検討した方式や、前提にした制約は [docs/design.md](docs/design.md) にまとめています。
+認可（OAuth）は Claude のコネクタと GitHub に任せます。中継は token を確かめも保存もせず、そのまま転送します。
+
+前提にした制約や、ほかに検討した方式は [docs/design.md](docs/design.md) にまとめています。
 
 ## 全体像
 
 ```
-cloud 環境「pocket-ssh-agent」のセッション（UPSTREAM_KEY=k_xxx）
+cloud 環境「pocket-ssh-agent」のセッション
+  （UPSTREAM_KEY=gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>）
   │
-  ├─ git push ───────────────► fork  tksugimoto-ai/pocket-ssh-agent   （Claude GitHub App）
+  ├─ git push ─────────────► fork  tksugimoto-ai/pocket-ssh-agent   （Claude GitHub App）
   │
-  └─ コネクタ「GitHub pocket」 ─► gh-mcp-relay  /e/pocket-ssh-agent/mcp
-                                    │ ・token の持ち主が tksugimoto-ai か
-                                    │ ・upstream_key が k_xxx か
-                                    ▼
-                                  公式 GitHub MCP ─► 本流 tksugimoto/pocket-ssh-agent
-                                                    （独自 GitHub App を本流にだけ install）
+  └─ コネクタ「GitHub relay」 ─► gh-mcp-relay
+                                  │ ・upstream_key の署名が正しいか
+                                  │ ・owner/repo が key に書かれた repo か
+                                  ▼
+                                公式 GitHub MCP ─► 本流 tksugimoto/pocket-ssh-agent
+                                                  （独自 GitHub App を本流に install）
 ```
+
+## 例
+
+| もの | 例 |
+| --- | --- |
+| claude.ai に登録するコネクタの URL | `https://gh-mcp-relay.<アカウント>.workers.dev/api.githubcopilot.com/mcp/x/issues,pull_requests` |
+| GitHub App ごとにコネクタを分けるとき | `https://gh-mcp-relay.<アカウント>.workers.dev/org-app/api.githubcopilot.com/mcp/x/issues,pull_requests` |
+| key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:849E1kvgMpGA0vXKG9LblAa0Tdz02uWjjMHQAUWMWFM` |
+| key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
+
+URL のパスは、本来登録する公式 GitHub MCP の URL から `https://` を除いたものです。転送先のホストは `UPSTREAM_HOSTS`（省略時は `api.githubcopilot.com` だけ）で縛ります。claude.ai では同じ URL のコネクタを2つ登録できないので、GitHub App ごとにコネクタを分けるときは、先頭にラベル（ドットを含まない名前）を付けます。
+
+key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形です。中身は読めるので、どの repo 用の key か見ればわかります。署名は HMAC-SHA256 で、署名用の鍵（`KEY_SECRET`）を持つ人しか作れません。
 
 ## 使い方（Claude のセッションから）
 
-準備（下記）が終わった環境では、Claude は次のように動きます。
-
 1. コードを変更し、fork のブランチに `git push` する（通常どおり）。
-2. コネクタ「GitHub pocket」の `create_pull_request` を、本流を `owner`/`repo` に、head を `tksugimoto-ai:<branch>` にして呼ぶ。
+2. コネクタの `create_pull_request` を、本流を `owner`/`repo` に、head を `tksugimoto-ai:<branch>` にして呼ぶ。
 3. その際、すべてのツール呼び出しに引数 `upstream_key` を付ける。値はセットアップスクリプトが `~/.claude/CLAUDE.md` に書いておくので、Claude はそれを読んで渡す。
 
 `upstream_key` は中継が確認したあと引数から消すので、GitHub には届きません。`tools/list` の結果にも中継が `upstream_key`（必須）を足すので、Claude は引数があることを自然に知ります。
 
-## 中継が確認すること
+## 中継が確かめること
 
-| URL | 役割 |
-| --- | --- |
-| `/e/<パス名>/mcp` | MCP の受け口。確認が通れば、設定の `upstream`（公式 GitHub MCP）に転送する |
-| `/.well-known/oauth-protected-resource/e/<パス名>/mcp` | 認可サーバーとして `https://github.com/login/oauth` を返す |
+- Authorization ヘッダーが無ければ `401` を返し、`WWW-Authenticate` でメタデータ（`/.well-known/oauth-protected-resource/<パス>`、認可サーバーは GitHub）の場所を伝える。Claude はこれを見て、GitHub で OAuth を行う。token の中身は確かめない。
+- `tools/call` では、`upstream_key` の署名と期限を確かめる。
+- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるか確かめる。`owner`/`repo` を取らないツールは、`get_me` を除いて拒否する（`search_*` などは、ほかの repo に届くため）。
+- 拒否したときは転送せず、JSON-RPC のエラーを返す。
+- `tools/list` の結果には、各ツールに `upstream_key` 引数（必須）を足す。
 
-1. token がない、または無効なら `401` を返し、`WWW-Authenticate` でメタデータの場所を伝えます。Claude はこれを見て、GitHub で OAuth を行います。
-2. token の持ち主を `https://api.github.com/user` で確かめ、`allowed_logins` にない人は拒否します（`403`）。
-3. `tools/call` の引数 `upstream_key` のハッシュ値が、パスの `key_sha256` と一致するか確かめます。違えば転送せず、JSON-RPC のエラーを返します。
-4. `tools/list` の結果には、各ツールに `upstream_key` 引数（必須）を足します。
-
-中身を解析するのは 3 と 4 だけです。ほかはそのまま転送します。ログにはパス名・ツール名・結果だけを残し、token・ヘッダー・key は残しません。
+ログにはパス・ツール名・結果だけを残し、token・ヘッダー・key は残しません。
 
 ## 準備
 
-本流の repo を1つ足すたびに、次を行います。
-
 ### 1. GitHub App を作る
 
-本流の所有者ごとに1つ作ります（例: 個人用、org 用）。所有者ごとに分けておくと、org の private repo と個人の public repo の境界を GitHub 側で守れます。
+本流の所有者ごとに作ります（例: 個人用、org 用）。private 設定の App は所有者のアカウントにしか install できないので、org の App と個人の App は分かれます。
 
 - 権限: Issues（Read & write）、Pull requests（Read & write）、Metadata（Read）
 - Callback URL: claude.ai のコネクタ登録画面に表示される URL（`https://claude.ai/api/mcp/auth_callback` と思われる）。ローカルの Claude Code でも使うなら、その URL も足す
 - 「Expire user authorization tokens」は ON のまま（Claude が refresh token で更新する）
-- 本流にだけ install する（Only select repositories）
+- 本流に install する（Only select repositories）
 
-### 2. key を発行して中継をデプロイする
+### 2. 中継をデプロイする（最初の1回）
 
 ```bash
 npm install
-npm run new-key                                   # UPSTREAM_KEY と key_sha256 が出る
-cp examples/paths.example.json paths.json         # key_sha256 などを書き換える
-npx wrangler secret put PATHS_JSON < paths.json
+openssl rand -base64 32 > .key-secret             # 署名用の鍵。手元に安全に保管する
+npx wrangler secret put KEY_SECRET < .key-secret
 npm run deploy
 ```
 
-`paths.json` は `.gitignore` に入っています。repo には置きません。
+### 3. claude.ai にコネクタを登録する（GitHub App ごとに1回）
 
-### 3. claude.ai にコネクタを登録する
-
-- URL: `https://<workers のホスト>/e/<パス名>/mcp`
+- URL: 上の「例」の形
 - Advanced settings に、GitHub App の Client ID と Client secret を入れる
 - `tksugimoto-ai` でログインした状態で認可する
 
-### 4. cloud 環境を設定する
+### 4. key を発行して環境に置く（環境ごと）
 
-本流ごとに専用の環境を作り、key はその環境にだけ置きます。Default 環境には key を置かないので、新しい repo は何もしなければ本流に届きません。
+key の発行は手元で行います。署名用の鍵を持っている人だけが発行できるので、Web ページや別の認証は用意しません。
 
-- 環境変数: `UPSTREAM_KEY=<new-key で出た値>`
-- セットアップスクリプト: `examples/setup-script.sh` を参考にする。`~/.claude/CLAUDE.md` に使い方と key を書き、ほかの環境用のコネクタを `deniedMcpServers` で見えなくする
+```bash
+KEY_SECRET=$(cat .key-secret) npm run new-key -- tksugimoto/pocket-ssh-agent
+KEY_SECRET=$(cat .key-secret) npm run new-key -- tksugimoto/app tksugimoto/app-submodule --expires 2027-04-01
+```
+
+cloud では、本流ごとに専用の環境を作り、次を設定します。Default 環境には key を置きません。
+
+- 環境変数: `UPSTREAM_KEY=<発行した key>`
+- セットアップスクリプト: `examples/setup-script.sh` を参考にする（`~/.claude/CLAUDE.md` に使い方と key を書く）
 
 ### ローカルの Claude Code で使う場合
 
-- ユーザー設定の `"disableClaudeAiConnectors": true` で claude.ai のコネクタを止める。
-- プロジェクトごとに、そのパスのコネクタだけを登録する: `claude mcp add --transport http --scope local gh-pocket https://<workers のホスト>/e/pocket-ssh-agent/mcp`
-- key は commit しない `.claude/settings.local.json` の `env` に置く。
+- コネクタは1つだけ登録すればよい（claude.ai のコネクタをそのまま使うか、ユーザースコープで `claude mcp add --transport http gh-relay <URL>`）。
+- key はプロジェクトごとに、commit しない `.claude/settings.local.json` の `env` に置き、プロジェクトの `CLAUDE.local.md` などで `upstream_key` に渡すよう書く。
 - 手元の `gh` や git の認証がメインアカウントのままだと、この仕組みの意味がなくなります。AI 用には `GH_CONFIG_DIR` を分けるか、コンテナの中で動かしてください。
 
-## 設定（PATHS_JSON）
+## key の取り消し
 
-| 項目 | 内容 |
-| --- | --- |
-| `enabled` | `false` で停止 |
-| `expires` | この日時を過ぎたら停止（ISO 8601） |
-| `key_sha256` | 環境の key の SHA-256（16進64文字） |
-| `allowed_logins` | 許可する GitHub の login |
-| `upstream` | 転送先。公式 GitHub MCP の URL（ツールセットで絞れる） |
+key は中継に記録しないので、1つずつ取り消すことはできません。期限（`--expires`）を付けて発行し、全部を無効にしたいときは `KEY_SECRET` を入れ替えて、key を発行し直します。
 
 ## 防げること・防げないこと
 
-- 防げること: 環境どうしの取り違えと、repo をまたぐ prompt injection（例: public repo の作業中に private repo へ書き込ませる）。
-- 防げないこと: 同じ環境のセッションが、許可した範囲の中で悪用すること。key はセッションから読めるので、認証情報ではなく「利用許可の合言葉」として扱い、`expires` と定期的な入れ替えで守ります。
+- 防げること: 1つのセッションから、key で許していない repo を操作すること（repo をまたぐ prompt injection を含む）。
+- 防げないこと: 許した repo の中での悪用。また、key はセッションから読めるので、ほかのセッションに書き写されるとその repo を使われます。認証情報ではなく「利用許可の合言葉」として扱い、期限で守ります。
 
 ## 未確認のこと
 

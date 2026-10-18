@@ -1,4 +1,4 @@
 node_modules/
 .wrangler/
-paths.json
 .dev.vars
+.key-secret
