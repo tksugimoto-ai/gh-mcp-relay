@@ -12,7 +12,7 @@ claude.ai の GitHub コネクタ（MCP）を、**セッションごとに決め
 
 ### 解決したい課題
 
-claude.ai のコネクタはアカウント単位なので、**どのセッションにも全部のコネクタが見え、コネクタが届く全部の repo を操作できます**。たとえば repo A の作業中に読んだ Issue に仕込まれた指示（prompt injection）で、repo B（org の private repo など）に書き込まれたり、中身を持ち出されたりするおそれがあります。
+最初から入っている公式の GitHub 連携は、セッションに追加した repo（= fork）にしか届きません。本流はセッションに入れられない（fork と同名のため）ので、本流には自分で追加した GitHub コネクタが必要です。ところが、自分で追加したコネクタは claude.ai のアカウント単位なので、**どのセッションにも全部見え、コネクタが届く全部の repo を操作できます**。たとえば repo A の作業中に読んだ Issue に仕込まれた指示（prompt injection）で、repo B（org の private repo など）に書き込まれたり、中身を持ち出されたりするおそれがあります。
 
 GitHub App の install 先や公式 GitHub MCP の設定では、これを防げません。
 
