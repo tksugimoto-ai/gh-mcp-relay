@@ -34,6 +34,8 @@ GitHub App の install 先や公式 GitHub MCP の設定では、これを防げ
 
 ## 全体像
 
+本流 `tksugimoto/pocket-ssh-agent` を、その fork で作業する cloud 環境から操作する場合の例です。ほかの repo でも形は同じです。
+
 ```
 cloud 環境「pocket-ssh-agent」のセッション
   （UPSTREAM_KEY=gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>）
