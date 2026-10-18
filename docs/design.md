@@ -55,7 +55,7 @@ cloud セッションでも、`~/.claude/settings.json` の `deniedMcpServers` �
 
 ## 採用した設計
 
-コネクタは GitHub App ごとに1つ登録し、どのセッションからも見えるままにします。そのかわり、セッションに置いた key で、操作できる repo を中継が絞ります。fork への push は、これとは別に fork だけに入れた Claude GitHub App が行います。
+GitHub App とコネクタは1つだけ作り、どのセッションからも見えるままにします。そのかわり、セッションに置いた key で、操作できる repo を中継が絞ります。fork への push は、これとは別に fork だけに入れた Claude GitHub App が行います。
 
 | 守るもの | 強制するもの | 仕組み |
 | --- | --- | --- |
@@ -63,6 +63,9 @@ cloud セッションでも、`~/.claude/settings.json` の `deniedMcpServers` �
 | App が届く repo の範囲 | GitHub | GitHub App の install 先 |
 | 操作の範囲（merge、push） | GitHub | `tksugimoto-ai` の本流での権限 |
 | 誰の名前で動くか・token の管理 | Claude と GitHub | コネクタの OAuth。中継は token を確かめも保存もしない |
+
+- GitHub App は public 設定（どのアカウントにも install できる）にする。private 設定だと作ったアカウントにしか install できず、個人と org で App とコネクタを分ける必要が出るため。public にしても、ほかの人が自分の repo に install できるだけで、こちらの repo には届かない。
+- 以前は「個人と org の境界を GitHub に守らせる」ために App を分ける案だったが、repo の範囲を key で絞るようにしたので分けない。
 
 ### key
 
@@ -77,7 +80,6 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 コネクタの URL は、公式 GitHub MCP の URL（`https://api.githubcopilot.com/mcp/...`）のホスト部分だけを中継のものに置き換えたものにします。登録する人にとってルールがわかりやすく、中継はパスをそのまま転送するだけで済みます。
 
 - この中継は GitHub 専用で、汎用の MCP 中継にはしない。転送先は `api.githubcopilot.com` に固定し、パスも `/mcp` 以下だけを受け付ける（token をほかの API に流さないため）。
-- claude.ai では同じ URL のコネクタを2つ登録できない。GitHub App ごとにコネクタを分けるときは、中継を別のホスト名でも公開し、ホストで URL を分ける（パスにラベルを入れると「ホストだけ置き換える」ルールが崩れるため）。
 
 ### ツールの扱い
 
@@ -102,7 +104,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 1. 本流で `tksugimoto-ai` に権限を付ける（private なら Triage、public なら不要）。
 2. 本流を `tksugimoto-ai` に fork する。
-3. 本流の所有者の GitHub App を、本流に install する（Only select repositories）。その所有者の App がまだなければ、App を作り、コネクタを登録する。
+3. GitHub App の install 先に本流を足す（Only select repositories）。
 4. その repo 用の key を発行する（`npm run new-key`）。
 5. 専用の環境を作り、`UPSTREAM_KEY` とセットアップスクリプトを設定する。
 

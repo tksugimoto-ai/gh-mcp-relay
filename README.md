@@ -54,13 +54,10 @@ cloud 環境「pocket-ssh-agent」のセッション
 | --- | --- |
 | 公式 GitHub MCP の URL | `https://api.githubcopilot.com/mcp/x/issues,pull_requests` |
 | claude.ai に登録するコネクタの URL | `https://gh-mcp-relay.<アカウント>.workers.dev/mcp/x/issues,pull_requests` |
-| GitHub App ごとにコネクタを分けるとき | `https://gh-mcp-relay-org.<アカウント>.workers.dev/mcp/x/issues,pull_requests` |
 | key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:849E1kvgMpGA0vXKG9LblAa0Tdz02uWjjMHQAUWMWFM` |
 | key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
 
 コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスも `/mcp` 以下だけを受け付けます。
-
-claude.ai では同じ URL のコネクタを2つ登録できません。GitHub App ごと（個人用・org 用）にコネクタを分けるときは、中継を別のホスト名でも公開し（同じ Worker を別名でデプロイする、またはカスタムドメインを足す）、ホストで URL を分けます。
 
 key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形です。中身は読めるので、どの repo 用の key か見ればわかります。署名は HMAC-SHA256 で、署名用の鍵（`KEY_SECRET`）を持つ人しか作れません。
 
@@ -86,12 +83,12 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 ### 1. GitHub App を作る
 
-本流の所有者ごとに作ります（例: 個人用、org 用）。private 設定の App は所有者のアカウントにしか install できないので、org の App と個人の App は分かれます。
+1つ作り、個人の本流にも org の本流にも install します。org の repo にも入れられるよう、「Where can this GitHub App be installed?」は Any account（public）にします。public にしても、ほかの人が自分の repo に install できるだけで、こちらの repo には届きません。
 
 - 権限: Issues（Read & write）、Pull requests（Read & write）、Metadata（Read）
 - Callback URL: claude.ai のコネクタ登録画面に表示される URL（`https://claude.ai/api/mcp/auth_callback` と思われる）
 - 「Expire user authorization tokens」は ON のまま（Claude が refresh token で更新する）
-- 本流に install する（Only select repositories）
+- 本流に install する（Only select repositories）。本流を足すときは、install 先に足す
 
 ### 2. 中継をデプロイする（最初の1回）
 
@@ -102,14 +99,7 @@ npx wrangler secret put KEY_SECRET < .key-secret
 npm run deploy
 ```
 
-GitHub App を2つ目以降に足すときは、同じコードを別の名前でもデプロイし、同じ `KEY_SECRET` を入れます。
-
-```bash
-npx wrangler deploy --name gh-mcp-relay-org
-npx wrangler secret put KEY_SECRET --name gh-mcp-relay-org < .key-secret
-```
-
-### 3. claude.ai にコネクタを登録する（GitHub App ごとに1回）
+### 3. claude.ai にコネクタを登録する（最初の1回）
 
 - URL: 上の「例」の形
 - Advanced settings に、GitHub App の Client ID と Client secret を入れる
