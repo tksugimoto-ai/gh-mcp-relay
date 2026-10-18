@@ -1,0 +1,39 @@
+// For format details, see https://aka.ms/devcontainer.json.
+// Based on https://github.com/tksugimoto/my-devcontainer (git submodule at ./my-devcontainer).
+{
+	"name": "gh-mcp-relay",
+	"image": "mcr.microsoft.com/devcontainers/base:trixie",
+
+	"features": {
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "24"
+		},
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+		"./my-devcontainer/.devcontainer/features/claude-code-bell": {},
+		"./my-devcontainer/.devcontainer/features/claude-code-statusline": {},
+		"./my-devcontainer/.devcontainer/features/claude-config-volume": {},
+		"./my-devcontainer/.devcontainer/features/node-modules-volume": {},
+		"./my-devcontainer/.devcontainer/features/gh-auth-volume": {}
+	},
+
+	// Override the volume names the features declare (see README.md).
+	"mounts": [
+		{
+			"source": "gh-mcp-relay-claude-config-${devcontainerId}",
+			"target": "/home/vscode/.claude",
+			"type": "volume"
+		},
+		{
+			"source": "gh-mcp-relay-gh-auth",
+			"target": "/home/vscode/.config/gh",
+			"type": "volume"
+		}
+	],
+
+	// One clock for the whole container: the status line's rate limit reset times
+	// would otherwise disagree with date, git log and npm timestamps.
+	"containerEnv": {
+		"TZ": "Asia/Tokyo"
+	}
+}
