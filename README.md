@@ -56,7 +56,7 @@ cloud 環境「pocket-ssh-agent」のセッション
 | --- | --- |
 | 公式 GitHub MCP の URL | `https://api.githubcopilot.com/mcp/x/issues,pull_requests` |
 | claude.ai に登録するコネクタの URL | `https://gh-mcp-relay.<アカウント>.workers.dev/mcp/x/issues,pull_requests` |
-| key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:849E1kvgMpGA0vXKG9LblAa0Tdz02uWjjMHQAUWMWFM` |
+| key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>` |
 | key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
 
 コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスも `/mcp` 以下だけを受け付けます。
