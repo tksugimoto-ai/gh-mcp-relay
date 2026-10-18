@@ -78,6 +78,8 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   assert.match(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'b' } }, allowed), /tksugimoto\/b/);
   assert.ok(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'a', parent_owner: 'x', parent_repo: 'y' } }, allowed));
   assert.ok(checkCall({ tool: 'search_issues', args: { query: 'repo:x/y' } }, allowed));
+  assert.ok(checkCall({ tool: 'search_issues', args: { owner: 'tksugimoto', repo: 'a', query: 'x' } }, allowed));
+  assert.ok(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto' } }, allowed));
   assert.equal(checkCall({ tool: 'get_me', args: {} }, allowed), null);
 });
 

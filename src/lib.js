@@ -98,6 +98,8 @@ export function reposInArgs(args) {
 
 // tools/call を key の範囲で許すか。許さないときは理由を返す。
 export function checkCall(call, allowedRepos) {
+  // search_* は owner/repo を省略でき、クエリでほかの repo にも届きうるので、引数によらず使わせない。
+  if (String(call.tool).startsWith('search_')) return 'search_* のツールは使えません';
   const repos = reposInArgs(call.args);
   if (repos.length === 0) {
     return REPOLESS_TOOLS.has(call.tool) ? null : 'owner と repo を取らないツールは使えません';

@@ -102,7 +102,8 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 ### ツールの扱い
 
 - 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。
-- `owner`/`repo` を取らないツールは、`get_me` を除いて拒否する。`search_*` はクエリでほかの repo に届くため。
+- `owner`/`repo` を取らないツール（`get_teams`、`create_repository`、`search_code` など）は、`get_me` を除いて拒否する。`owner` だけのツール（`list_issue_types` など）も拒否になる。
+- `search_*` は `owner`/`repo` を省略でき（`search_issues` など）、クエリでほかの repo にも届きうるので、引数によらず拒否する。
 - 中継は通信の中身をこれ以上は解析しない。ツールごとに細かく制限したくなったら、公式サーバーへの転送をやめて、少数の自前ツールを実装する。
 
 ## cloud の環境構成
