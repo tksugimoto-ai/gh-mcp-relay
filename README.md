@@ -176,9 +176,6 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 
 ## 未確認のこと
 
-- 届いた OAuth の token をそのまま公式 GitHub MCP に転送して使えるか（実環境ではまだ試していません）。
-- cloud セッションで `~/.claude/CLAUDE.md` が読まれるか。
-- cloud セッションで、`~/.claude/settings.json` の SessionStart の hook が動き、環境変数 `GH_MCP_RELAY_KEY` を読めるか。
 - OAuth App のコネクタで、claude.ai が中継の伝える `repo` の scope を付けて認可するか。GitHub App のパスで scope を返さないことに問題が無いか。
 
 ## テスト

@@ -148,10 +148,10 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 ## 未確認のこと
 
 - [x] GitHub を認可サーバーにした OAuth で、claude.ai のコネクタ登録が通るか。GitHub は `https://github.com/.well-known/oauth-authorization-server/login/oauth` でメタデータを公開している（PKCE S256、refresh token 対応、DCR なし）。Client ID と secret はコネクタ登録画面の Advanced settings に入れる。
-- [ ] 公式 GitHub MCP への転送で、届いた OAuth の token がそのまま使えるか。
+- [x] 公式 GitHub MCP への転送で、届いた OAuth の token がそのまま使えるか。使えた（本流に Issue とドラフト PR を作れた）。
 - [ ] 同じユーザーと App の組み合わせで、発行できる user token の数に上限があるか。
-- [ ] cloud で `~/.claude/CLAUDE.md` が読まれるか。
+- [x] cloud で `~/.claude/CLAUDE.md` が読まれるか。読まれた。
 - [ ] `allowedMcpServers`（許可リスト）がユーザー設定で効くか（効けば deny の列挙が不要になる）。
 - [x] public の本流でも、GitHub App を fork に install しないと PR を作れないか。要らない。public の fork から public の本流への PR は、App を fork に入れずに作れた。private の本流では要る。
-- [ ] OAuth App のコネクタで、claude.ai が中継の伝える `repo` の scope（`scopes_supported` と `WWW-Authenticate` の `scope`）を付けて認可するか。最初のテストで確かめる。
-- [ ] cloud セッションで、`~/.claude/settings.json` の SessionStart の hook が動き、環境変数 `GH_MCP_RELAY_KEY` を読めるか。
+- [ ] OAuth App のコネクタで、claude.ai が中継の伝える `repo` の scope（`scopes_supported` と `WWW-Authenticate` の `scope`）を付けて認可するか。
+- [x] cloud セッションで、`~/.claude/settings.json` の SessionStart の hook が動き、環境変数 `GH_MCP_RELAY_KEY` を読めるか。動いた（hook の出力がセッションの開始時に文脈に入り、その key で本流を読めた）。
