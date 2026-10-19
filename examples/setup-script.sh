@@ -15,7 +15,7 @@ cat > ~/.claude/settings.json <<'JSON'
   ],
   "hooks": {
     "SessionStart": [
-      {"hooks": [{"type": "command", "command": "printf 'コネクタ「GitHub relay」のツールの引数 upstream_key に渡す値: %s\\n' \"$GH_MCP_RELAY_KEY\""}]}
+      {"hooks": [{"type": "command", "command": "printf 'コネクタ「GitHub relay」のツールの引数 gh_mcp_relay_key に渡す値: %s\\n' \"$GH_MCP_RELAY_KEY\""}]}
     ]
   }
 }
@@ -25,6 +25,6 @@ cat > ~/.claude/CLAUDE.md <<'MD'
 # 本流（upstream）への Issue・PR
 
 本流 tksugimoto/pocket-ssh-agent への Issue・PR・コメントは、コネクタ「GitHub relay」のツールで行う。
-どのツールを呼ぶときも、引数 upstream_key に、セッションの開始時に示された値を渡す。
+どのツールを呼ぶときも、引数 gh_mcp_relay_key に、セッションの開始時に示された値を渡す。
 fork へのコードの変更は、通常どおり git push で行う。
 MD

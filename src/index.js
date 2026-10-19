@@ -1,6 +1,6 @@
 // GitHub MCP 用の薄い中継。
 // - 認可（OAuth）は Claude のコネクタと GitHub に任せ、token は確かめずにそのまま転送する。保存もしない。
-// - 確かめるのは、ツール呼び出しの upstream_key と、その key が許す repo だけ。
+// - 確かめるのは、ツール呼び出しの gh_mcp_relay_key と、その key が許す repo だけ。
 // - パスはそのまま公式 GitHub MCP（api.githubcopilot.com）に渡す。中継は設定ファイルを持たない。
 
 import { checkCall, deniedMethod, hasMethod, injectKeyParam, matchRoute, oauthScope, resourceMetadata, stripKey, verifyKey } from './lib.js';
@@ -42,7 +42,7 @@ export default {
       const { message: stripped, calls } = stripKey(message);
       for (const call of calls) {
         const key = await verifyKey(env.KEY_SECRET, call.key, Date.now());
-        const reason = key ? checkCall(call, key.repos) : 'upstream_key が無いか、正しくありません';
+        const reason = key ? checkCall(call, key.repos) : 'gh_mcp_relay_key が無いか、正しくありません';
         if (reason) {
           log(route.path, call.tool, 'denied');
           return json(200, rpcError(call.id, -32001, reason));

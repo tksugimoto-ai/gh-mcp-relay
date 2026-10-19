@@ -43,7 +43,7 @@ cloud 環境「pocket-ssh-agent」のセッション
   ├─ git push ─────────────► fork  tksugimoto-ai/pocket-ssh-agent   （Claude GitHub App）
   │
   └─ コネクタ「GitHub relay」 ─► gh-mcp-relay
-                                  │ ・upstream_key の署名が正しいか
+                                  │ ・gh_mcp_relay_key の署名が正しいか
                                   │ ・owner/repo が key に書かれた repo か
                                   ▼
                                 公式 GitHub MCP ─► 本流 tksugimoto/pocket-ssh-agent
@@ -67,18 +67,18 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 1. コードを変更し、fork のブランチに `git push` する（通常どおり）。
 2. コネクタの `create_pull_request` を、本流を `owner`/`repo` に、head を `tksugimoto-ai:<branch>` にして呼ぶ。
-3. その際、すべてのツール呼び出しに引数 `upstream_key` を付ける。値は環境変数 `GH_MCP_RELAY_KEY` にあり、セットアップスクリプトが入れる SessionStart の hook が、セッションの開始時に Claude の文脈に入れる。Claude はそれを渡す。
+3. その際、すべてのツール呼び出しに引数 `gh_mcp_relay_key` を付ける。値は環境変数 `GH_MCP_RELAY_KEY` にあり、セットアップスクリプトが入れる SessionStart の hook が、セッションの開始時に Claude の文脈に入れる。Claude はそれを渡す。
 
-`upstream_key` は中継が確認したあと引数から消すので、GitHub には届きません。`tools/list` の結果にも中継が `upstream_key`（必須）を足すので、Claude は引数があることを自然に知ります。
+`gh_mcp_relay_key` は中継が確認したあと引数から消すので、GitHub には届きません。`tools/list` の結果にも中継が `gh_mcp_relay_key`（必須）を足すので、Claude は引数があることを自然に知ります。
 
 ## 中継が確かめること
 
 - Authorization ヘッダーが無ければ `401` を返し、`WWW-Authenticate` でメタデータ（`/.well-known/oauth-protected-resource/<パス>`、認可サーバーは GitHub）の場所を伝える。Claude はこれを見て、GitHub で OAuth を行う。token の中身は確かめない。
 - 通す JSON-RPC のメソッドは `initialize`・`ping`・`tools/list`・`tools/call`・`notifications/*` だけ。`resources/read`・`prompts/get`・`completion/complete` などは repo を引数ではなく URI などで渡し、確かめられないので拒否する。
-- `tools/call` では、`upstream_key` の署名と期限を確かめる。
+- `tools/call` では、`gh_mcp_relay_key` の署名と期限を確かめる。
 - 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるか確かめる。`owner`/`repo` を取らないツールは、`get_me` を除いて拒否する。`search_*` は `owner`/`repo` を省略でき、クエリでほかの repo にも届きうるので、引数によらず拒否する。Projects のツールも、`owner` だけでアカウントや org 全体に効くので、引数によらず拒否する。
 - 拒否したときは転送せず、JSON-RPC のエラーを返す。
-- `tools/list` の結果には、各ツールに `upstream_key` 引数（必須）を足す。
+- `tools/list` の結果には、各ツールに `gh_mcp_relay_key` 引数（必須）を足す。
 
 ログにはパス・ツール名・結果だけを残し、token・ヘッダー・key は残しません。
 
@@ -126,7 +126,7 @@ cloud では、本流ごとに専用の環境を作り、次を設定します�
 
 claude.ai のアカウントでログインしたローカルの Claude Code には、claude.ai のコネクタがそのまま出てきます。コネクタの登録と認可は cloud と共有でき、ローカル用に登録し直す必要はありません。
 
-- key はプロジェクトの `CLAUDE.local.md`（commit しない）に書く。ローカルには SessionStart の hook が無いので、cloud の `~/.claude/CLAUDE.md` の「セッションの開始時に示された値を渡す」の代わりに、「引数 upstream_key に次の値を渡す: `<key>`」と値をそのまま書く。
+- key はプロジェクトの `CLAUDE.local.md`（commit しない）に書く。ローカルには SessionStart の hook が無いので、cloud の `~/.claude/CLAUDE.md` の「セッションの開始時に示された値を渡す」の代わりに、「引数 gh_mcp_relay_key に次の値を渡す: `<key>`」と値をそのまま書く。
 - 手元の `gh` や git の認証がメインアカウントのままだと、この仕組みの意味がなくなります。AI 用には `GH_CONFIG_DIR` を分けるか、コンテナの中で動かしてください。
 
 ### App を入れられない repo を読む場合（OAuth App と読み取り専用のコネクタ）

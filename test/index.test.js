@@ -115,7 +115,7 @@ test('正しい key と repo なら key を消して転送する', async () => {
   assert.equal(forwarded[0].headers.get('authorization'), 'Bearer gho_test');
 });
 
-test('tools/list の結果に upstream_key を足す', async () => {
+test('tools/list の結果に gh_mcp_relay_key を足す', async () => {
   stubFetch({
     upstream: () => Response.json({ jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'get_me', inputSchema: { type: 'object' } }] } }),
   });

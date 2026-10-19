@@ -1,6 +1,6 @@
 // 中継の判定ロジック。Workers と Node（テスト）の両方で動くよう、Web 標準 API だけを使う。
 
-export const KEY_ARG = 'upstream_key';
+export const KEY_ARG = 'gh_mcp_relay_key';
 // 転送先。コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたもの。
 export const UPSTREAM_ORIGIN = 'https://api.githubcopilot.com';
 
@@ -134,7 +134,7 @@ export function deniedMethod(message) {
   });
 }
 
-// JSON-RPC のメッセージ（単体または配列）から tools/call の upstream_key を取り出し、
+// JSON-RPC のメッセージ（単体または配列）から tools/call の gh_mcp_relay_key を取り出し、
 // 転送前に引数から消す。
 export function stripKey(message) {
   const list = Array.isArray(message) ? message : [message];
@@ -160,7 +160,7 @@ const KEY_PROPERTY = {
   description: 'セッションの開始時に示された gh-mcp-relay の key（GH_MCP_RELAY_KEY）。どのツールでも必須。',
 };
 
-// tools/list の結果の各ツールに upstream_key 引数を足す。Claude が引数を渡し忘れないようにするため。
+// tools/list の結果の各ツールに gh_mcp_relay_key 引数を足す。Claude が引数を渡し忘れないようにするため。
 function injectIntoResult(msg) {
   const tools = msg?.result?.tools;
   if (!Array.isArray(tools)) return msg;
