@@ -8,8 +8,9 @@ const KEY_PREFIX = 'gh-mcp-relay';
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const EXPIRES_RE = /^\d{4}-\d{2}-\d{2}$/;
 const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
-// 転送してよいパス。公式 GitHub MCP の `/mcp` 以下だけで、`..` は別に弾く。
-const UPSTREAM_PATH_RE = /^\/mcp(\/[A-Za-z0-9._,-]+)*\/?$/;
+// 転送してよいパス。既定のツールセット（`/mcp`）とその読み取り専用版だけ。ツールの拒否は名前で見ているので、
+// `/mcp/x/gists` などほかのツールセットを通すと、確かめていないツールが使えてしまう。
+const UPSTREAM_PATH_RE = /^\/mcp(\/readonly)?\/?$/;
 
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
@@ -34,7 +35,7 @@ export function matchRoute(pathname) {
     kind = 'metadata';
     path = pathname.slice(METADATA_PREFIX.length - 1);
   }
-  if (!UPSTREAM_PATH_RE.test(path) || path.split('/').includes('..')) return null;
+  if (!UPSTREAM_PATH_RE.test(path)) return null;
   return { kind, path, upstream: `${UPSTREAM_ORIGIN}${path}` };
 }
 

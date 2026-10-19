@@ -18,20 +18,25 @@ const SECRET = 'test-secret';
 const NOW = Date.parse('2026-10-18T00:00:00Z');
 
 test('matchRoute: パスをそのまま公式 GitHub MCP に渡す', () => {
-  assert.deepEqual(matchRoute('/mcp/x/issues'), {
+  assert.deepEqual(matchRoute('/mcp'), {
     kind: 'endpoint',
-    path: '/mcp/x/issues',
-    upstream: 'https://api.githubcopilot.com/mcp/x/issues',
+    path: '/mcp',
+    upstream: 'https://api.githubcopilot.com/mcp',
   });
   assert.equal(matchRoute('/mcp/').upstream, 'https://api.githubcopilot.com/mcp/');
-  assert.deepEqual(matchRoute('/.well-known/oauth-protected-resource/mcp/x/issues'), {
+  assert.equal(matchRoute('/mcp/readonly').upstream, 'https://api.githubcopilot.com/mcp/readonly');
+  assert.deepEqual(matchRoute('/.well-known/oauth-protected-resource/mcp/readonly'), {
     kind: 'metadata',
-    path: '/mcp/x/issues',
-    upstream: 'https://api.githubcopilot.com/mcp/x/issues',
+    path: '/mcp/readonly',
+    upstream: 'https://api.githubcopilot.com/mcp/readonly',
   });
 });
 
-test('matchRoute: /mcp 以外や怪しいパスは拒否する', () => {
+test('matchRoute: /mcp と /mcp/readonly 以外や怪しいパスは拒否する', () => {
+  // ほかのツールセットのツールは、中継の拒否リストで確かめていないので通さない。
+  assert.equal(matchRoute('/mcp/x/gists'), null);
+  assert.equal(matchRoute('/mcp/x/issues/readonly'), null);
+  assert.equal(matchRoute('/.well-known/oauth-protected-resource/mcp/x/notifications'), null);
   assert.equal(matchRoute('/'), null);
   assert.equal(matchRoute('/user'), null);
   assert.equal(matchRoute('/mcpx'), null);

@@ -59,7 +59,7 @@ cloud 環境「pocket-ssh-agent」のセッション
 | key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>` |
 | key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
 
-コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。公式 GitHub MCP の `/mcp/x/<ツールセット>` は 1 つのツールセットしか取らず、カンマで並べると黙ってツールが空になるので、ふつうは `/mcp`（既定のツールセット）か `/mcp/readonly` を使います。転送先はこのホストに固定で、パスも `/mcp` 以下だけを受け付けます。
+コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）と `/mcp/readonly` だけを受け付けます。中継はツールや引数を名前で拒否していて、確かめたのは既定のツールセットのツールだけなので、`/mcp/x/<ツールセット>` などほかのパスは通しません。
 
 key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形です。期限の日付になった時点（その日の 0 時 UTC、日本時間 9 時）から使えなくなります。中身は読めるので、どの repo 用の key か見ればわかります。署名は HMAC-SHA256 で、署名用の鍵（`KEY_SECRET`）を持つ人しか作れません。
 
