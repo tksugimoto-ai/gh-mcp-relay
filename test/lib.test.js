@@ -18,10 +18,10 @@ const SECRET = 'test-secret';
 const NOW = Date.parse('2026-10-18T00:00:00Z');
 
 test('matchRoute: パスをそのまま公式 GitHub MCP に渡す', () => {
-  assert.deepEqual(matchRoute('/mcp/x/issues,pull_requests'), {
+  assert.deepEqual(matchRoute('/mcp/x/issues'), {
     kind: 'endpoint',
-    path: '/mcp/x/issues,pull_requests',
-    upstream: 'https://api.githubcopilot.com/mcp/x/issues,pull_requests',
+    path: '/mcp/x/issues',
+    upstream: 'https://api.githubcopilot.com/mcp/x/issues',
   });
   assert.equal(matchRoute('/mcp/').upstream, 'https://api.githubcopilot.com/mcp/');
   assert.deepEqual(matchRoute('/.well-known/oauth-protected-resource/mcp/x/issues'), {
@@ -47,7 +47,7 @@ test('resourceMetadata: GitHub を認可サーバーとして返す', () => {
     bearer_methods_supported: ['header'],
   });
   // OAuth App のコネクタを登録する readonly のパスでは、private の repo を読むための scope を返す。
-  assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/x/repos/readonly').scopes_supported, ['repo']);
+  assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/readonly').scopes_supported, ['repo']);
 });
 
 test('createKey / verifyKey: 読める形で、署名を確かめる', async () => {

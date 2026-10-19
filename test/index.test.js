@@ -5,8 +5,8 @@ import worker from '../src/index.js';
 import { KEY_ARG, createKey } from '../src/lib.js';
 
 const SECRET = 'test-secret';
-const UPSTREAM = 'https://api.githubcopilot.com/mcp/x/issues,pull_requests';
-const ENDPOINT = 'https://relay.example.com/mcp/x/issues,pull_requests';
+const UPSTREAM = 'https://api.githubcopilot.com/mcp';
+const ENDPOINT = 'https://relay.example.com/mcp';
 const env = { KEY_SECRET: SECRET };
 let KEY;
 before(async () => {
@@ -43,7 +43,7 @@ const repoArgs = { owner: 'tksugimoto', repo: 'pocket-ssh-agent' };
 test('メタデータは token なしで返す', async () => {
   stubFetch();
   const res = await worker.fetch(
-    new Request('https://relay.example.com/.well-known/oauth-protected-resource/mcp/x/issues,pull_requests'),
+    new Request('https://relay.example.com/.well-known/oauth-protected-resource/mcp'),
     env,
   );
   assert.equal(res.status, 200);
@@ -58,13 +58,13 @@ test('token なしは 401 とメタデータの場所', async () => {
   assert.equal(res.status, 401);
   assert.equal(
     res.headers.get('www-authenticate'),
-    'Bearer resource_metadata="https://relay.example.com/.well-known/oauth-protected-resource/mcp/x/issues,pull_requests"',
+    'Bearer resource_metadata="https://relay.example.com/.well-known/oauth-protected-resource/mcp"',
   );
 });
 
 test('readonly のパスの 401 は scope も伝える', async () => {
   stubFetch();
-  const res = await worker.fetch(new Request('https://relay.example.com/mcp/x/repos/readonly', { method: 'POST', body: '{}' }), env);
+  const res = await worker.fetch(new Request('https://relay.example.com/mcp/readonly', { method: 'POST', body: '{}' }), env);
   assert.equal(res.status, 401);
   assert.match(res.headers.get('www-authenticate'), /, scope="repo"$/);
 });
