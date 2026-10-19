@@ -47,7 +47,7 @@ cloud 環境「pocket-ssh-agent」のセッション
                                   │ ・owner/repo が key に書かれた repo か
                                   ▼
                                 公式 GitHub MCP ─► 本流 tksugimoto/pocket-ssh-agent
-                                                  （独自 GitHub App を本流に install）
+                                                  （独自 GitHub App を本流と fork に install）
 ```
 
 ## 例
@@ -88,10 +88,10 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 1つ作り、個人の本流にも org の本流にも install します。org の repo にも入れられるよう、「Where can this GitHub App be installed?」は Any account（public）にします。public にしても、ほかの人が自分の repo に install できるだけで、こちらの repo には届きません。
 
-- 権限: Issues（Read & write）、Pull requests（Read & write）、Metadata（Read）
+- 権限: Issues（Read & write）、Pull requests（Read & write）、Contents（Read）、Metadata（Read）。Contents は、fork から本流への PR を作るときに、GitHub が head と base を比べるのに要る
 - Callback URL: claude.ai のコネクタ登録画面に表示される URL（`https://claude.ai/api/mcp/auth_callback` と思われる）
 - 「Expire user authorization tokens」は ON のまま（Claude が refresh token で更新する）
-- 本流に install する（Only select repositories）。本流を足すときは、install 先に足す
+- 本流と fork の両方に install する（Only select repositories）。private の本流では、fork に入れないと、PR を作るときに head のある fork を読めず `not all refs are readable` で失敗する（public の本流でも要るかは未確認）。fork に入れても、中継が key に書いた本流だけに絞るので、届く範囲は変わらない。本流を足すときは、本流と fork の両方を install 先に足す
 
 ### 2. 中継をデプロイする（最初の1回）
 
@@ -142,6 +142,7 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 
 - 届いた OAuth の token をそのまま公式 GitHub MCP に転送して使えるか（実環境ではまだ試していません）。
 - cloud セッションで `~/.claude/CLAUDE.md` が読まれるか。
+- public の本流でも、GitHub App を fork に install しないと PR を作れないか（private の本流では要ることを確かめた）。
 
 ## テスト
 
