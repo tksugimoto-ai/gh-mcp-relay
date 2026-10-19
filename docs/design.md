@@ -153,5 +153,5 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - [x] cloud で `~/.claude/CLAUDE.md` が読まれるか。読まれた。
 - [ ] `allowedMcpServers`（許可リスト）がユーザー設定で効くか（効けば deny の列挙が不要になる）。
 - [x] public の本流でも、GitHub App を fork に install しないと PR を作れないか。要らない。public の fork から public の本流への PR は、App を fork に入れずに作れた。private の本流では要る。
-- [x] OAuth App のコネクタで、App を入れていない private の repo を読めるか。読めた（中継が伝える `repo` の scope で認可された）。org の repo では、org の owner が OAuth App を承認するまで 403 になる。
+- [x] OAuth App のコネクタで、App を入れていない private の repo を読めるか。読めた。App を入れていない private の repo を読めたので、中継が伝える `repo` の scope で認可されたと判断した（GitHub の Authorized OAuth Apps の画面ではまだ確かめていない）。org の repo では、org の owner が OAuth App を承認するまで 403 になる。
 - [x] cloud セッションで、`~/.claude/settings.json` の SessionStart の hook が動き、環境変数 `GH_MCP_RELAY_KEY` を読めるか。動いた（hook の出力がセッションの開始時に文脈に入り、その key で本流を読めた）。
