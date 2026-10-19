@@ -126,7 +126,7 @@ cloud では、本流ごとに専用の環境を作り、次を設定します�
 
 claude.ai のアカウントでログインしたローカルの Claude Code には、claude.ai のコネクタがそのまま出てきます。コネクタの登録と認可は cloud と共有でき、ローカル用に登録し直す必要はありません。
 
-- key はプロジェクトの `CLAUDE.local.md`（commit しない）に、cloud の `~/.claude/CLAUDE.md` と同じ文面と、key の値をそのまま書く。
+- key はプロジェクトの `CLAUDE.local.md`（commit しない）に書く。ローカルには SessionStart の hook が無いので、cloud の `~/.claude/CLAUDE.md` の「セッションの開始時に示された値を渡す」の代わりに、「引数 upstream_key に次の値を渡す: `<key>`」と値をそのまま書く。
 - 手元の `gh` や git の認証がメインアカウントのままだと、この仕組みの意味がなくなります。AI 用には `GH_CONFIG_DIR` を分けるか、コンテナの中で動かしてください。
 
 ### App を入れられない repo を読む場合（OAuth App と読み取り専用のコネクタ）
