@@ -75,7 +75,7 @@ repo ごとのコネクタの利点は、Claude から見てどのコネクタ�
 
 GitHub App とコネクタは1つだけ作り、どのセッションからも見えるままにします。そのかわり、セッションに置いた key で、操作できる repo を中継が絞ります。fork への push は、これとは別に fork だけに入れた Claude GitHub App が行います。
 
-GitHub App を入れられない repo（ほかの人の private の repo など）は、OAuth App で認可する読み取り専用のコネクタを別に足して読みます（URL は `/readonly` で終わるパス）。OAuth App の token は GitHub 側で repo を絞れないので、境界は key と readonly のパスだけになります。手順と弱くなる点は README にまとめています。
+GitHub App を入れられない repo（ほかの人の private の repo など）は、OAuth App で認可する読み取り専用のコネクタを別に足して読みます（URL はパスに `readonly` を含むもの。例: `/mcp/readonly`）。OAuth App の token は GitHub 側で repo を絞れないので、境界は key と readonly のパスだけになります。手順と弱くなる点は [README.md](../README.md) にまとめています。
 
 | 守るもの | 強制するもの | 仕組み |
 | --- | --- | --- |
