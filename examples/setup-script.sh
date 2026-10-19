@@ -2,17 +2,11 @@
 # 環境変数 GH_MCP_RELAY_KEY を環境の設定に入れておくこと。
 mkdir -p ~/.claude
 
-# - deniedMcpServers: 中継を通らない GitHub のコネクタがあれば見えなくする（任意。名前は /mcp か
-#   ListConnectors で確認する）。表示名だけだと、UUID 名の同じコネクタがすり抜けるので、両方を書く。
-# - SessionStart の hook: セッションが始まるたびに、環境変数の key を Claude の文脈に入れる。
-#   このスクリプトの実行時には環境変数が空のことがあり（結果はキャッシュされる）、また Claude が
-#   コマンドで環境変数を読むと、自動の権限チェックで止められることがあるため。
+# SessionStart の hook で、セッションが始まるたびに環境変数の key を Claude の文脈に入れる。
+# このスクリプトの実行時には環境変数が空のことがあり（結果はキャッシュされる）、また Claude が
+# コマンドで環境変数を読むと、自動の権限チェックで止められることがあるため。
 cat > ~/.claude/settings.json <<'JSON'
 {
-  "deniedMcpServers": [
-    {"serverName": "claude.ai <そのコネクタの表示名>"},
-    {"serverName": "<そのコネクタの UUID 名>"}
-  ],
   "hooks": {
     "SessionStart": [
       {"hooks": [{"type": "command", "command": "printf 'コネクタ「GitHub relay」のツールの引数 gh_mcp_relay_key に渡す値: %s\\n' \"$GH_MCP_RELAY_KEY\""}]}
