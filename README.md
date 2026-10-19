@@ -151,14 +151,14 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 3. OAuth App を作る（Settings → Developer settings → OAuth Apps）。Callback URL は `https://claude.ai/api/mcp/auth_callback`。
 4. claude.ai にコネクタを登録する。URL は上の readonly のもので、Advanced settings に OAuth App の Client ID と secret を入れる。`tksugimoto-ai` でログインした状態で認可する。
 5. 認可した後、GitHub の Settings → Applications → Authorized OAuth Apps で、`repo` の scope が付いたか確かめる。
-6. その repo 用の key を発行し、専用の環境に `GH_MCP_RELAY_KEY` として置く（上の手順と同じ）。
+6. org の repo では、org の owner に OAuth App を承認してもらう。承認されるまでは「organization has enabled OAuth App access restrictions」の 403 になる。owner が org の Settings → Third-party access（`https://github.com/organizations/<org>/settings/oauth_application_policy`）で Approve する。owner でなければ、Authorized OAuth Apps でその App を開き、org の横の Request で申請する。
+7. その repo 用の key を発行し、専用の環境に `GH_MCP_RELAY_KEY` として置く（上の手順と同じ）。
 
 守りが弱くなる点:
 
 - OAuth App の token は `repo` の scope で、`tksugimoto-ai` が触れる全部の repo に読み書きできる。GitHub 側で範囲を絞れず、境界は key と readonly のパスだけになる。
 - key は同じ claude.ai アカウントの中では強い境界にならない（[docs/design.md](docs/design.md) のリスク）。強い境界が要る repo は claude.ai のアカウントを分ける。この方法は、アカウントを分けるほどではない repo 向け。
 - OAuth App の token には、既定で期限が無い。要らなくなったら、Authorized OAuth Apps で取り消す。
-- org の repo では、その org が third-party application restrictions を有効にしていると、OAuth App にも org の owner の承認が要る。
 
 使わない方法:
 
@@ -173,10 +173,6 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 
 - 防げること: 1つのセッションから、key で許していない repo を操作すること（repo をまたぐ prompt injection を含む）。
 - 防げないこと: 許した repo の中での悪用。OAuth App のコネクタでは、GitHub 側の範囲の制限が無いので、key だけが境界になる。また、key はセッションから読めるので、ほかのセッションに書き写されるとその repo を使われます。認証情報ではなく「利用許可の合言葉」として扱い、期限で守ります。
-
-## 未確認のこと
-
-- OAuth App のコネクタで、claude.ai が中継の伝える `repo` の scope を付けて認可するか。GitHub App のパスで scope を返さないことに問題が無いか。
 
 ## テスト
 
