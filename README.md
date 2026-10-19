@@ -129,6 +129,42 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 - key はプロジェクトの `CLAUDE.local.md`（commit しない）に、cloud の `~/.claude/CLAUDE.md` と同じ文面で書く。
 - 手元の `gh` や git の認証がメインアカウントのままだと、この仕組みの意味がなくなります。AI 用には `GH_CONFIG_DIR` を分けるか、コンテナの中で動かしてください。
 
+### App を入れられない repo を読む場合（OAuth App と読み取り専用のコネクタ）
+
+持ち主がほかの人で、独自の GitHub App を入れられない repo（ほかの人の private の repo など）があります。GitHub App の user token は install 先にしか届かないので、上のコネクタではその repo に届きません。install せずに届くのは OAuth App だけなので、読み取り専用のコネクタをもう1つ足します。
+
+| | 上のコネクタ | 足すコネクタ |
+| --- | --- | --- |
+| OAuth のクライアント | GitHub App | OAuth App |
+| URL | `https://<中継>/mcp/x/issues,pull_requests` | `https://<中継>/mcp/x/repos,issues,pull_requests/readonly` |
+| 届く範囲を絞るもの | GitHub（App の install 先）と key | key だけ |
+| 書き込み | できる（App の権限の範囲で） | できない（公式 GitHub MCP の readonly で、書き込みのツールが出ない） |
+
+- 同じ URL のコネクタは 2 つ目を登録できないので、readonly のパスで URL を分けます。読み取り専用にすること自体も、この用途に合っています。
+- 中継の確認（key の署名、引数の `owner`/`repo`、`search_*` と Projects のツールの拒否）は、そのまま効きます。
+- OAuth App の token は、認可のときに求めた scope しか持ちません。private の repo を読むには `repo` の scope が要るので、中継は readonly のパスでだけ、メタデータの `scopes_supported` と 401 の `WWW-Authenticate` で `repo` を伝えます。
+
+手順:
+
+1. その repo を `tksugimoto-ai` が読めるようにする（持ち主に招いてもらう）。org の repo なら Read でよい。個人のアカウントの repo では collaborator は必ず Write になるが、このコネクタは読み取り専用で、その repo には Claude GitHub App も入れないので、AI から書き込む経路は無い。
+2. 必要なら、`tksugimoto-ai` で fork し、fork に Claude GitHub App を入れる（cloud でコードを clone して動かす場合）。private の fork は、元の repo を読む権限を失うと消える。
+3. OAuth App を作る（Settings → Developer settings → OAuth Apps）。Callback URL は `https://claude.ai/api/mcp/auth_callback`。
+4. claude.ai にコネクタを登録する。URL は上の readonly のもので、Advanced settings に OAuth App の Client ID と secret を入れる。`tksugimoto-ai` でログインした状態で認可する。
+5. 認可した後、GitHub の Settings → Applications → Authorized OAuth Apps で、`repo` の scope が付いたか確かめる。
+6. その repo 用の key を発行し、専用の環境に `UPSTREAM_KEY` として置く（上の手順と同じ）。
+
+守りが弱くなる点:
+
+- OAuth App の token は `repo` の scope で、`tksugimoto-ai` が触れる全部の repo に読み書きできる。GitHub 側で範囲を絞れず、境界は key と readonly のパスだけになる。
+- key は同じ claude.ai アカウントの中では強い境界にならない（[docs/design.md](docs/design.md) のリスク）。強い境界が要る repo は claude.ai のアカウントを分ける。この方法は、アカウントを分けるほどではない repo 向け。
+- OAuth App の token には、既定で期限が無い。要らなくなったら、Authorized OAuth Apps で取り消す。
+- org の repo では、その org が third-party application restrictions を有効にしていると、OAuth App にも org の owner の承認が要る。
+
+使わない方法:
+
+- cloud の `/web-setup` は、`gh` の token をアカウント全体の GitHub の接続として保存し、今の接続を置き換える。環境ごとに分けられない。
+- 中継を通さずに、公式 GitHub MCP の readonly の URL をそのままコネクタにすると、key の確認が無く、全部のセッションから全部の repo を読める。
+
 ## key の取り消し
 
 key は中継に記録しないので、1つずつ取り消すことはできません。期限（`--expires`）を付けて発行し、全部を無効にしたいときは `KEY_SECRET` を入れ替えて、key を発行し直します。
@@ -136,12 +172,13 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 ## 防げること・防げないこと
 
 - 防げること: 1つのセッションから、key で許していない repo を操作すること（repo をまたぐ prompt injection を含む）。
-- 防げないこと: 許した repo の中での悪用。また、key はセッションから読めるので、ほかのセッションに書き写されるとその repo を使われます。認証情報ではなく「利用許可の合言葉」として扱い、期限で守ります。
+- 防げないこと: 許した repo の中での悪用。OAuth App のコネクタでは、GitHub 側の範囲の制限が無いので、key だけが境界になる。また、key はセッションから読めるので、ほかのセッションに書き写されるとその repo を使われます。認証情報ではなく「利用許可の合言葉」として扱い、期限で守ります。
 
 ## 未確認のこと
 
 - 届いた OAuth の token をそのまま公式 GitHub MCP に転送して使えるか（実環境ではまだ試していません）。
 - cloud セッションで `~/.claude/CLAUDE.md` が読まれるか。
+- OAuth App のコネクタで、claude.ai が中継の伝える `repo` の scope を付けて認可するか。GitHub App のパスで scope を返さないことに問題が無いか。
 
 ## テスト
 

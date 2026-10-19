@@ -3,7 +3,7 @@
 // - 確かめるのは、ツール呼び出しの upstream_key と、その key が許す repo だけ。
 // - パスはそのまま公式 GitHub MCP（api.githubcopilot.com）に渡す。中継は設定ファイルを持たない。
 
-import { checkCall, deniedMethod, hasMethod, injectKeyParam, matchRoute, resourceMetadata, stripKey, verifyKey } from './lib.js';
+import { checkCall, deniedMethod, hasMethod, injectKeyParam, matchRoute, oauthScope, resourceMetadata, stripKey, verifyKey } from './lib.js';
 
 const FORWARD_REQUEST_HEADERS = ['authorization', 'content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'];
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'mcp-session-id', 'cache-control'];
@@ -78,9 +78,10 @@ export default {
 
 function unauthorized(origin, path) {
   const metadataUrl = `${origin}/.well-known/oauth-protected-resource${path}`;
+  const scope = oauthScope(path);
   return new Response('unauthorized', {
     status: 401,
-    headers: { 'www-authenticate': `Bearer resource_metadata="${metadataUrl}"` },
+    headers: { 'www-authenticate': `Bearer resource_metadata="${metadataUrl}"${scope ? `, scope="${scope}"` : ''}` },
   });
 }
 

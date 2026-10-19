@@ -46,6 +46,8 @@ test('resourceMetadata: GitHub を認可サーバーとして返す', () => {
     authorization_servers: ['https://github.com/login/oauth'],
     bearer_methods_supported: ['header'],
   });
+  // OAuth App のコネクタを登録する readonly のパスでは、private の repo を読むための scope を返す。
+  assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/x/repos/readonly').scopes_supported, ['repo']);
 });
 
 test('createKey / verifyKey: 読める形で、署名を確かめる', async () => {

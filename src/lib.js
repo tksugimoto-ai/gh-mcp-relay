@@ -32,11 +32,20 @@ export function matchRoute(pathname) {
   return { kind, path, upstream: `${UPSTREAM_ORIGIN}${path}` };
 }
 
+// OAuth App で認可するときに求める scope。OAuth App の token は求めた scope しか持たないので、
+// private の repo を読むには repo が要る。OAuth App のコネクタは readonly のパスで登録する
+// （同じ URL のコネクタは 2 つ登録できない）ので、readonly のパスでだけ返す。GitHub App は scope を見ない。
+export function oauthScope(path) {
+  return path.split('/').includes('readonly') ? 'repo' : null;
+}
+
 export function resourceMetadata(origin, path) {
+  const scope = oauthScope(path);
   return {
     resource: `${origin}${path}`,
     authorization_servers: ['https://github.com/login/oauth'],
     bearer_methods_supported: ['header'],
+    ...(scope ? { scopes_supported: [scope] } : {}),
   };
 }
 

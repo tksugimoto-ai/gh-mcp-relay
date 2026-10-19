@@ -62,6 +62,13 @@ test('token なしは 401 とメタデータの場所', async () => {
   );
 });
 
+test('readonly のパスの 401 は scope も伝える', async () => {
+  stubFetch();
+  const res = await worker.fetch(new Request('https://relay.example.com/mcp/x/repos/readonly', { method: 'POST', body: '{}' }), env);
+  assert.equal(res.status, 401);
+  assert.match(res.headers.get('www-authenticate'), /, scope="repo"$/);
+});
+
 test('/mcp 以外のパスは 404', async () => {
   stubFetch();
   const res = await worker.fetch(new Request('https://relay.example.com/user', { method: 'POST' }), env);
