@@ -16,6 +16,12 @@ const REPOLESS_TOOLS = new Set(['get_me']);
 // owner だけを取り、アカウントや org 全体に効くツール（Projects）。repo を足されても上流は無視するので、
 // 引数によらず使わせない。
 const OWNER_SCOPED_TOOL_RE = /project/;
+// owner/repo を取らず、key の repo の外に効くツール。使わない owner/repo を足されても上流は無視するので、
+// 名前で使わせない（create_repository は新しい repo を作り、get_teams・get_team_members は org を読む）。
+const OUT_OF_REPO_TOOLS = new Set(['create_repository', 'get_teams', 'get_team_members']);
+// owner/repo とは別に対象のアカウントや org を決める引数。中継は確かめられないので、付いていたら使わせない
+// （fork_repository の organization で、許した repo を別の org に fork させない、など）。
+const TARGET_ARGS = new Set(['organization', 'org', 'user', 'username', 'gist_id', 'notificationID']);
 // 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
 // owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
 const ALLOWED_METHODS = new Set(['initialize', 'ping', 'tools/list', 'tools/call']);
@@ -116,6 +122,9 @@ export function checkCall(call, allowedRepos) {
   // search_* は owner/repo を省略でき、クエリでほかの repo にも届きうるので、引数によらず使わせない。
   if (String(call.tool).startsWith('search_')) return 'search_* のツールは使えません';
   if (OWNER_SCOPED_TOOL_RE.test(call.tool)) return 'Projects のツールは使えません';
+  if (OUT_OF_REPO_TOOLS.has(call.tool)) return `${call.tool} は使えません`;
+  const targetArg = Object.keys(call.args ?? {}).find((name) => TARGET_ARGS.has(name));
+  if (targetArg) return `引数 ${targetArg} は使えません`;
   const repos = reposInArgs(call.args);
   if (repos.length === 0) {
     return REPOLESS_TOOLS.has(call.tool) ? null : 'owner と repo を取らないツールは使えません';
