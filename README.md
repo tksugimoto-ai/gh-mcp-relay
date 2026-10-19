@@ -38,7 +38,7 @@ GitHub App の install 先や公式 GitHub MCP の設定では、これを防げ
 
 ```
 cloud 環境「pocket-ssh-agent」のセッション
-  （UPSTREAM_KEY=gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>）
+  （GH_MCP_RELAY_KEY=gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>）
   │
   ├─ git push ─────────────► fork  tksugimoto-ai/pocket-ssh-agent   （Claude GitHub App）
   │
@@ -67,7 +67,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 1. コードを変更し、fork のブランチに `git push` する（通常どおり）。
 2. コネクタの `create_pull_request` を、本流を `owner`/`repo` に、head を `tksugimoto-ai:<branch>` にして呼ぶ。
-3. その際、すべてのツール呼び出しに引数 `upstream_key` を付ける。値はセットアップスクリプトが `~/.claude/CLAUDE.md` に書いておくので、Claude はそれを読んで渡す。
+3. その際、すべてのツール呼び出しに引数 `upstream_key` を付ける。値は環境変数 `GH_MCP_RELAY_KEY` にある。セットアップスクリプトが `~/.claude/CLAUDE.md` にそう書いておくので、Claude は `printenv GH_MCP_RELAY_KEY` で読んで渡す。
 
 `upstream_key` は中継が確認したあと引数から消すので、GitHub には届きません。`tools/list` の結果にも中継が `upstream_key`（必須）を足すので、Claude は引数があることを自然に知ります。
 
@@ -119,14 +119,14 @@ KEY_SECRET=$(cat .key-secret) npm run new-key -- tksugimoto/app tksugimoto/app-s
 
 cloud では、本流ごとに専用の環境を作り、次を設定します。Default 環境には key を置きません。
 
-- 環境変数: `UPSTREAM_KEY=<発行した key>`
-- セットアップスクリプト: [examples/setup-script.sh](examples/setup-script.sh) を参考にする（`~/.claude/CLAUDE.md` に使い方と key を書く）
+- 環境変数: `GH_MCP_RELAY_KEY=<発行した key>`。名前で、この中継の key だとわかるようにしている
+- セットアップスクリプト: [examples/setup-script.sh](examples/setup-script.sh) を参考にする（`~/.claude/CLAUDE.md` に使い方を書く）。セットアップスクリプトを実行する時点では環境変数が入っていないことがあるので、key の値は書き出さず、Claude に環境変数から読ませる
 
 ### ローカルの Claude Code で使う場合
 
 claude.ai のアカウントでログインしたローカルの Claude Code には、claude.ai のコネクタがそのまま出てきます。コネクタの登録と認可は cloud と共有でき、ローカル用に登録し直す必要はありません。
 
-- key はプロジェクトの `CLAUDE.local.md`（commit しない）に、cloud の `~/.claude/CLAUDE.md` と同じ文面で書く。
+- key はプロジェクトの `CLAUDE.local.md`（commit しない）に書く。文面は cloud の `~/.claude/CLAUDE.md` と同じで、環境変数から読む代わりに key の値をそのまま書く。
 - 手元の `gh` や git の認証がメインアカウントのままだと、この仕組みの意味がなくなります。AI 用には `GH_CONFIG_DIR` を分けるか、コンテナの中で動かしてください。
 
 ### App を入れられない repo を読む場合（OAuth App と読み取り専用のコネクタ）
@@ -151,7 +151,7 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 3. OAuth App を作る（Settings → Developer settings → OAuth Apps）。Callback URL は `https://claude.ai/api/mcp/auth_callback`。
 4. claude.ai にコネクタを登録する。URL は上の readonly のもので、Advanced settings に OAuth App の Client ID と secret を入れる。`tksugimoto-ai` でログインした状態で認可する。
 5. 認可した後、GitHub の Settings → Applications → Authorized OAuth Apps で、`repo` の scope が付いたか確かめる。
-6. その repo 用の key を発行し、専用の環境に `UPSTREAM_KEY` として置く（上の手順と同じ）。
+6. その repo 用の key を発行し、専用の環境に `GH_MCP_RELAY_KEY` として置く（上の手順と同じ）。
 
 守りが弱くなる点:
 

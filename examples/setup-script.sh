@@ -1,5 +1,5 @@
 # cloud 環境のセットアップスクリプトの例（pocket-ssh-agent 用の環境）。
-# 環境変数 UPSTREAM_KEY を環境の設定に入れておくこと。
+# 環境変数 GH_MCP_RELAY_KEY を環境の設定に入れておくこと。
 mkdir -p ~/.claude
 
 # 中継を通らない GitHub のコネクタがあれば見えなくする（任意。名前は /mcp か ListConnectors で確認する）。
@@ -11,11 +11,12 @@ cat > ~/.claude/settings.json <<'JSON'
 ]}
 JSON
 
-# key の値をメモリに直接書く。Claude が Bash で環境変数を読まずに済むようにするため。
-cat > ~/.claude/CLAUDE.md <<MD
+# key の値はここで書き出さない。このスクリプトを実行する時点では、環境変数が空のことがあるため。
+# Claude にセッションの中で環境変数から読ませる。
+cat > ~/.claude/CLAUDE.md <<'MD'
 # 本流（upstream）への Issue・PR
 
 本流 tksugimoto/pocket-ssh-agent への Issue・PR・コメントは、コネクタ「GitHub relay」のツールで行う。
-どのツールを呼ぶときも、引数 upstream_key に次の値を渡す: ${UPSTREAM_KEY}
+どのツールを呼ぶときも、引数 upstream_key に環境変数 GH_MCP_RELAY_KEY の値を渡す（`printenv GH_MCP_RELAY_KEY` で読む）。
 fork へのコードの変更は、通常どおり git push で行う。
 MD

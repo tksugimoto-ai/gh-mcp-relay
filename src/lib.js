@@ -157,7 +157,7 @@ export function hasMethod(message, method) {
 
 const KEY_PROPERTY = {
   type: 'string',
-  description: 'この環境の UPSTREAM_KEY の値。どのツールでも必須。',
+  description: 'この環境の GH_MCP_RELAY_KEY の値。どのツールでも必須。',
 };
 
 // tools/list の結果の各ツールに upstream_key 引数を足す。Claude が引数を渡し忘れないようにするため。
