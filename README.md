@@ -67,7 +67,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 1. コードを変更し、fork のブランチに `git push` する（通常どおり）。
 2. コネクタの `create_pull_request` を、本流を `owner`/`repo` に、head を `tksugimoto-ai:<branch>` にして呼ぶ。
-3. その際、すべてのツール呼び出しに引数 `upstream_key` を付ける。値は環境変数 `GH_MCP_RELAY_KEY` にある。セットアップスクリプトが `~/.claude/CLAUDE.md` にそう書いておくので、Claude は `printenv GH_MCP_RELAY_KEY` で読んで渡す。
+3. その際、すべてのツール呼び出しに引数 `upstream_key` を付ける。値は環境変数 `GH_MCP_RELAY_KEY` にあり、セットアップスクリプトが入れる SessionStart の hook が、セッションの開始時に Claude の文脈に入れる。Claude はそれを渡す。
 
 `upstream_key` は中継が確認したあと引数から消すので、GitHub には届きません。`tools/list` の結果にも中継が `upstream_key`（必須）を足すので、Claude は引数があることを自然に知ります。
 
@@ -120,13 +120,13 @@ KEY_SECRET=$(cat .key-secret) npm run new-key -- tksugimoto/app tksugimoto/app-s
 cloud では、本流ごとに専用の環境を作り、次を設定します。Default 環境には key を置きません。
 
 - 環境変数: `GH_MCP_RELAY_KEY=<発行した key>`。名前で、この中継の key だとわかるようにしている
-- セットアップスクリプト: [examples/setup-script.sh](examples/setup-script.sh) を参考にする（`~/.claude/CLAUDE.md` に使い方を書く）。セットアップスクリプトを実行する時点では環境変数が入っていないことがあるので、key の値は書き出さず、Claude に環境変数から読ませる
+- セットアップスクリプト: [examples/setup-script.sh](examples/setup-script.sh) を参考にする（`~/.claude/CLAUDE.md` に使い方を書き、`~/.claude/settings.json` に SessionStart の hook を入れる）。key の値をファイルに書き出したり、Claude にコマンドで環境変数を読ませたりはしない。セットアップスクリプトの実行時には環境変数が空のことがあり（結果はキャッシュされる）、Claude がコマンドで環境変数を読むと自動の権限チェックで止められることがあるため
 
 ### ローカルの Claude Code で使う場合
 
 claude.ai のアカウントでログインしたローカルの Claude Code には、claude.ai のコネクタがそのまま出てきます。コネクタの登録と認可は cloud と共有でき、ローカル用に登録し直す必要はありません。
 
-- key はプロジェクトの `CLAUDE.local.md`（commit しない）に書く。文面は cloud の `~/.claude/CLAUDE.md` と同じで、環境変数から読む代わりに key の値をそのまま書く。
+- key はプロジェクトの `CLAUDE.local.md`（commit しない）に、cloud の `~/.claude/CLAUDE.md` と同じ文面と、key の値をそのまま書く。
 - 手元の `gh` や git の認証がメインアカウントのままだと、この仕組みの意味がなくなります。AI 用には `GH_CONFIG_DIR` を分けるか、コンテナの中で動かしてください。
 
 ### App を入れられない repo を読む場合（OAuth App と読み取り専用のコネクタ）
@@ -178,6 +178,7 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 
 - 届いた OAuth の token をそのまま公式 GitHub MCP に転送して使えるか（実環境ではまだ試していません）。
 - cloud セッションで `~/.claude/CLAUDE.md` が読まれるか。
+- cloud セッションで、`~/.claude/settings.json` の SessionStart の hook が動き、環境変数 `GH_MCP_RELAY_KEY` を読めるか。
 - OAuth App のコネクタで、claude.ai が中継の伝える `repo` の scope を付けて認可するか。GitHub App のパスで scope を返さないことに問題が無いか。
 
 ## テスト

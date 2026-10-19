@@ -117,10 +117,10 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 | 環境 | 使う repo（fork） | 環境変数 | セットアップスクリプト |
 | --- | --- | --- | --- |
 | Default | 専用環境のない repo すべて | なし | なし |
-| 本流ごとの環境 | その本流の fork | `GH_MCP_RELAY_KEY=<その repo 用の key>` | `~/.claude/CLAUDE.md` に使い方 |
+| 本流ごとの環境 | その本流の fork | `GH_MCP_RELAY_KEY=<その repo 用の key>` | `~/.claude/CLAUDE.md` に使い方、SessionStart の hook で key を文脈に入れる |
 
 - 環境変数はその環境を使う人とセッションから読めるので、key は認証情報ではなく「利用許可の合言葉」として扱います。
-- 使い方の説明は本流の repo に入れず、セットアップスクリプトで `~/.claude/CLAUDE.md` に書き出します。key の値は書き出さず、Claude に環境変数から読ませます（セットアップスクリプトを実行する時点では、環境変数が空のことがあった）。
+- 使い方の説明は本流の repo に入れず、セットアップスクリプトで `~/.claude/CLAUDE.md` に書き出します。key の値は書き出さず、SessionStart の hook がセッションの開始時に環境変数から読んで、Claude の文脈に入れます。セットアップスクリプトの実行時には環境変数が空のことがあり（結果はキャッシュされる）、Claude がコマンドで環境変数を読むと自動の権限チェックで止められたためです。
 - 中継を通らない GitHub のコネクタが残っている間は、`deniedMcpServers` で見えなくします（表示名と UUID 名の両方を書く）。
 
 ### repo を1つ足す手順
@@ -154,3 +154,4 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - [ ] `allowedMcpServers`（許可リスト）がユーザー設定で効くか（効けば deny の列挙が不要になる）。
 - [x] public の本流でも、GitHub App を fork に install しないと PR を作れないか。要らない。public の fork から public の本流への PR は、App を fork に入れずに作れた。private の本流では要る。
 - [ ] OAuth App のコネクタで、claude.ai が中継の伝える `repo` の scope（`scopes_supported` と `WWW-Authenticate` の `scope`）を付けて認可するか。最初のテストで確かめる。
+- [ ] cloud セッションで、`~/.claude/settings.json` の SessionStart の hook が動き、環境変数 `GH_MCP_RELAY_KEY` を読めるか。
