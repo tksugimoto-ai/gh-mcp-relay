@@ -125,7 +125,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 1. 本流で `tksugimoto-ai` に権限を付ける（private なら Triage、public なら不要）。
 2. 本流を `tksugimoto-ai` に fork する。
-3. GitHub App の install 先に、本流と fork の両方を足す（Only select repositories）。private の本流では、fork に入れないと PR を作るときに head を読めず失敗する（public の本流でも要るかは未確認）。fork に入れても、中継が key に書いた本流だけに絞るので、境界は変わらない。
+3. GitHub App の install 先に本流を足す（Only select repositories）。private の本流では fork も足す。fork に入れないと、PR を作るときに head を読めず失敗する。public の本流と fork なら、fork には要らない（確かめた）。fork に入れても、中継が key に書いた本流だけに絞るので、境界は変わらない。
 4. その repo 用の key を発行する（`npm run new-key`）。
 5. 専用の環境を作り、`UPSTREAM_KEY` とセットアップスクリプトを設定する。
 
@@ -149,4 +149,4 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - [ ] 同じユーザーと App の組み合わせで、発行できる user token の数に上限があるか。
 - [ ] cloud で `~/.claude/CLAUDE.md` が読まれるか。
 - [ ] `allowedMcpServers`（許可リスト）がユーザー設定で効くか（効けば deny の列挙が不要になる）。
-- [ ] public の本流でも、GitHub App を fork に install しないと PR を作れないか（private の本流では要ることを確かめた）。最初のテストで確かめる。
+- [x] public の本流でも、GitHub App を fork に install しないと PR を作れないか。要らない。public の fork から public の本流への PR は、App を fork に入れずに作れた。private の本流では要る。
