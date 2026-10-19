@@ -139,7 +139,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 | --- | --- | --- |
 | key がセッションから読める | 別のセッションに key を書き写されると、その repo を使われる | 期限つきで発行する。必要なら `KEY_SECRET` を入れ替える |
 | ほかのセッションから key を入手される | 同じ claude.ai アカウントのセッションは、ほかのセッションの会話記録を読める（確かめた）。key はツールの引数に入るので、記録に残る。ほかのセッションにメッセージを送って key を聞き出すこともできると考えられる（推論で、試していない）。このため、同じアカウントの中では key は強い境界にならない | 強い境界が要る repo（org の private など）は、claude.ai のアカウントを分ける。key を置かない環境では、ほかのセッションを読む・送るツールを deny する（効くかは未確認） |
-| OAuth App のコネクタ | GitHub App を入れられない repo を読むための OAuth App の token は、`repo` の scope で `tksugimoto-ai` が触れる全 repo に読み書きでき、期限も無い | readonly のパスでだけ登録し、書き込みのツールを出さない。強い境界が要る repo は claude.ai のアカウントを分ける。要らなくなったら token を取り消す |
+| OAuth App のコネクタ | GitHub App を入れられない repo を読むための OAuth App の token は、`repo` の scope で `tksugimoto-ai` が触れる全 repo に読み書きでき、期限も無い | readonly のパスでだけ登録し、書き込みのツールを出さない（token そのものは書き込めるので、token が漏れたときには効かない。被害の上限は `tksugimoto-ai` の権限の全体なので、その権限を小さく保つ）。強い境界が要る repo は claude.ai のアカウントを分ける。要らなくなったら token を取り消す |
 | key を1つずつ取り消せない | 中継が key を記録しないため | 期限を短めにする。全部を無効にするときは `KEY_SECRET` を入れ替える |
 | fork への git push | 組み込みの GitHub 連携なので、コネクタ側の制御が効かない | private のコネクタは、その環境以外で deny する |
 | 中継を通る通信 | token と PR 本文が中継を通過する | ヘッダーをログに残さない。信頼できるホスティング先に置く |

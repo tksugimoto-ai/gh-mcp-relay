@@ -157,6 +157,7 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 守りが弱くなる点:
 
 - OAuth App の token は `repo` の scope で、`tksugimoto-ai` が触れる全部の repo に読み書きできる。GitHub 側で範囲を絞れず、境界は key と readonly のパスだけになる。
+- 読み取り専用なのは、コネクタの URL（`/readonly`）で公式 GitHub MCP が書き込みのツールを出さないからで、token そのものは書き込める。token が漏れたとき（中継や claude.ai の外で使われたとき）には、この制限も key も効かない。そのときの被害の上限は `tksugimoto-ai` の権限の全体なので、`tksugimoto-ai` に付ける権限（招かれる repo とその権限）を小さく保つことが守りになる。
 - key は同じ claude.ai アカウントの中では強い境界にならない（[docs/design.md](docs/design.md) のリスク）。強い境界が要る repo は claude.ai のアカウントを分ける。この方法は、アカウントを分けるほどではない repo 向け。
 - OAuth App の token には、既定で期限が無い。要らなくなったら、Authorized OAuth Apps で取り消す。
 
