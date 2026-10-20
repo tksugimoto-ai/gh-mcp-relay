@@ -7,8 +7,8 @@
   // リクエストごとの invocation log は URL やリクエストの情報を含むので残さない。
   "observability": {
     "enabled": true,
-    "logs": { "invocation_logs": false }
-  }
+    "logs": { "invocation_logs": false },
+  },
   // key の署名用の鍵は secret に入れる（repo には置かない）。
   //   npx wrangler secret put KEY_SECRET < .key-secret   （作り方は README）
 }
