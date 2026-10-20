@@ -8,6 +8,7 @@ import {
   deniedMethod,
   injectKeyParam,
   matchRoute,
+  oauthScope,
   reposInArgs,
   resourceMetadata,
   stripKey,
@@ -31,14 +32,23 @@ test('matchRoute: パスをそのまま公式 GitHub MCP に渡す', () => {
     upstream: 'https://api.githubcopilot.com/mcp/readonly',
   });
   // ツールセットを 1 つ選ぶパスと、その読み取り専用版。
-  for (const path of ['/mcp/x/actions', '/mcp/x/actions/readonly', '/mcp/x/all', '/mcp/x/all/readonly/', '/mcp/x/pull_requests']) {
+  for (const path of ['/mcp/x/actions', '/mcp/x/actions/readonly', '/mcp/x/actions/readonly/', '/mcp/x/pull_requests']) {
     assert.equal(matchRoute(path)?.upstream, `https://api.githubcopilot.com${path}`, path);
   }
-  assert.equal(matchRoute('/.well-known/oauth-protected-resource/mcp/x/all/readonly').path, '/mcp/x/all/readonly');
+  assert.equal(matchRoute('/.well-known/oauth-protected-resource/mcp/x/actions/readonly').path, '/mcp/x/actions/readonly');
 });
 
 test('matchRoute: 決めた形以外や怪しいパスは拒否する', () => {
-  // insiders は試験中のツールが出るので通さない。カンマ区切りは上流が受け付けない。
+  // repo の外に届くツールを含むツールセットと、上流の更新でツールが増える all は通さない。
+  for (const toolset of ['all', 'gists', 'notifications', 'stargazers', 'orgs', 'users', 'projects', 'copilot_spaces']) {
+    assert.equal(matchRoute(`/mcp/x/${toolset}`), null, toolset);
+    assert.equal(matchRoute(`/mcp/x/${toolset}/readonly`), null, toolset);
+  }
+  // ツールセット名に見える readonly・insiders も通さない。insiders は試験中のツールが出る。カンマ区切りは上流が受け付けない。
+  assert.equal(matchRoute('/mcp/x/readonly'), null);
+  assert.equal(matchRoute('/mcp/x/readonly/readonly'), null);
+  assert.equal(matchRoute('/mcp/x/insiders'), null);
+  assert.equal(matchRoute('/mcp/x/insiders/readonly'), null);
   assert.equal(matchRoute('/mcp/insiders'), null);
   assert.equal(matchRoute('/mcp/x/all/insiders'), null);
   assert.equal(matchRoute('/mcp/x/all/readonly/insiders'), null);
@@ -62,8 +72,10 @@ test('resourceMetadata: GitHub を認可サーバーとして返す', () => {
   });
   // OAuth App のコネクタを登録する readonly のパスでは、private の repo を読むための scope を返す。
   assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/readonly').scopes_supported, ['repo']);
-  assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/x/all/readonly').scopes_supported, ['repo']);
-  assert.equal(resourceMetadata('https://relay.example.com', '/mcp/x/all').scopes_supported, undefined);
+  assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/x/actions/readonly/').scopes_supported, ['repo']);
+  assert.equal(resourceMetadata('https://relay.example.com', '/mcp/x/actions').scopes_supported, undefined);
+  // repo の scope を求めるのは、パスの末尾が /readonly のときだけ。
+  assert.equal(oauthScope('/mcp/readonly/x'), null);
 });
 
 test('createKey / verifyKey: 読める形で、署名を確かめる', async () => {
@@ -109,7 +121,8 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   // actions のツールも owner/repo で確かめる。
   assert.equal(checkCall({ tool: 'actions_list', args: { owner: 'tksugimoto', repo: 'a', method: 'list_workflow_runs' } }, allowed), null);
   assert.ok(checkCall({ tool: 'get_job_logs', args: { owner: 'tksugimoto', repo: 'b', run_id: 1 } }, allowed));
-  // owner/repo を取らないほかのツールセットのツールは通さない。
+  // owner/repo を取らないツールは通さない。ただし使わない owner/repo を足すと通ってしまうので、
+  // そうしたツールを含むツールセットは matchRoute で通さない（上のテスト）。
   for (const tool of ['create_gist', 'list_notifications', 'list_global_security_advisories']) {
     assert.ok(checkCall({ tool, args: {} }, allowed), tool);
   }

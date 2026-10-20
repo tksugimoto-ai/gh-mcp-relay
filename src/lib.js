@@ -8,10 +8,25 @@ const KEY_PREFIX = 'gh-mcp-relay';
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const EXPIRES_RE = /^\d{4}-\d{2}-\d{2}$/;
 const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
-// 転送してよいパス。既定のツールセット（`/mcp`）、ツールセットを 1 つ選ぶ `/mcp/x/<ツールセット>`
-// （`all` を含む）と、それぞれの読み取り専用版。repo の範囲は checkCall が引数で確かめるので、ツールセットによらない。
-// 何ができるかは App の権限で決まる。`/insiders` は試験中のツールが出るので通さない。
-const UPSTREAM_PATH_RE = /^\/mcp(\/x\/[a-z_]+)?(\/readonly)?\/?$/;
+// 転送してよいパス。既定のツールセット（`/mcp`）、ツールセットを 1 つ選ぶ `/mcp/x/<ツールセット>` と、
+// それぞれの読み取り専用版。`/insiders` は試験中のツールが出るので通さない。
+const UPSTREAM_PATH_RE = /^\/mcp(?:\/x\/([a-z_]+))?(\/readonly)?\/?$/;
+// `/mcp/x/<ツールセット>` で通すツールセット。ツールが owner/repo を取り、上流の API も repo のパスになるものだけ。
+// owner/repo を取らないツールは、使わない owner/repo を足すと checkCall を通ってしまうので、そうしたツールを含む
+// ツールセット（gists・notifications・stargazers・orgs・users・projects など）と、上流の更新でツールが増える all は通さない。
+const ALLOWED_TOOLSETS = new Set([
+  'actions',
+  'code_quality',
+  'code_security',
+  'dependabot',
+  'discussions',
+  'git',
+  'issues',
+  'labels',
+  'pull_requests',
+  'repos',
+  'secret_protection',
+]);
 
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
@@ -37,7 +52,8 @@ export function matchRoute(pathname) {
     kind = 'metadata';
     path = pathname.slice(METADATA_PREFIX.length - 1);
   }
-  if (!UPSTREAM_PATH_RE.test(path)) return null;
+  const match = UPSTREAM_PATH_RE.exec(path);
+  if (!match || (match[1] && !ALLOWED_TOOLSETS.has(match[1]))) return null;
   return { kind, path, upstream: `${UPSTREAM_ORIGIN}${path}` };
 }
 
@@ -45,7 +61,7 @@ export function matchRoute(pathname) {
 // private の repo を読むには repo が要る。OAuth App のコネクタは readonly のパスで登録する
 // （同じ URL のコネクタは 2 つ登録できない）ので、readonly のパスでだけ返す。GitHub App は scope を見ない。
 export function oauthScope(path) {
-  return path.split('/').includes('readonly') ? 'repo' : null;
+  return /\/readonly\/?$/.test(path) ? 'repo' : null;
 }
 
 export function resourceMetadata(origin, path) {

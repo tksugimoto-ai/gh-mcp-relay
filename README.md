@@ -59,7 +59,7 @@ cloud 環境「pocket-ssh-agent」のセッション
 | key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>` |
 | key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
 
-コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）、`/mcp/x/<ツールセット>`（`all` を含む）と、それぞれの `/readonly` 版を受け付けます（`/insiders` は通しません）。ツールセットによらず、中継は引数の `owner`/`repo` を key と照らします。何ができるか（actions の再実行など）は App の権限で決まるので、使わせたくない操作は App の権限を付けないでおきます。
+コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）、`/mcp/x/<ツールセット>` と、それぞれの `/readonly` 版を受け付けます（`/insiders` は通しません）。`/mcp/x/` で通すツールセットは、ツールが `owner`/`repo` を取り、repo の中に閉じるもの（`actions`、`code_quality`、`code_security`、`dependabot`、`discussions`、`git`、`issues`、`labels`、`pull_requests`、`repos`、`secret_protection`）だけです。repo の外に届くツールを含むもの（gists、notifications など）と、上流の更新でツールが増える `all` は通しません。1 つの URL で選べるツールセットは 1 つなので、既定と actions を使うなら `/mcp` と `/mcp/x/actions` のようにコネクタを並べます。何ができるか（actions の再実行など）は App の権限で決まるので、使わせたくない操作は App の権限を付けないでおきます。
 
 key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形です。期限の日付になった時点（その日の 0 時 UTC、日本時間 9 時）から使えなくなります。中身は読めるので、どの repo 用の key か見ればわかります。署名は HMAC-SHA256 で、署名用の鍵（`KEY_SECRET`）を持つ人しか作れません。
 
@@ -159,7 +159,7 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 | 書き込み | できる（App の権限の範囲で） | できない（公式 GitHub MCP の readonly で、書き込みのツールが出ない） |
 
 - 同じ URL のコネクタは 2 つ目を登録できないので、readonly のパスで URL を分けます。読み取り専用にすること自体も、この用途に合っています。
-- ほかのツールセットを読むときも、`/mcp/x/<ツールセット>/readonly` や `/mcp/x/all/readonly` のように `/readonly` の付いたパスで登録します。OAuth App の token には App の権限による制限が無いので、`/readonly` の無いパスでは登録しません。
+- ほかのツールセットを読むときも、`/mcp/x/actions/readonly` のように `/readonly` で終わるパスで登録します。OAuth App の token には App の権限による制限が無いので、`/readonly` で終わらないパスでは登録しません（中継も、`repo` の scope は `/readonly` で終わるパスでだけ求めます）。
 - 中継の確認（key の署名、引数の `owner`/`repo`、`search_*` と Projects のツールの拒否）は、そのまま効きます。
 - OAuth App の token は、認可のときに求めた scope しか持ちません。private の repo を読むには `repo` の scope が要るので、中継は readonly のパスでだけ、メタデータの `scopes_supported` と 401 の `WWW-Authenticate` で `repo` を伝えます。
 
