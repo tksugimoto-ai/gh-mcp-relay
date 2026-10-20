@@ -107,6 +107,19 @@ npm run deploy
 - コンテナや SSH の先など、ブラウザから `localhost:8976` に戻れない環境では、先に `npx wrangler login --device` でログインする（表示された URL とコードをブラウザで開いて承認する）。
 - デプロイし直した後や、key・セットアップスクリプトを変えた後は、コネクタを使うセッションを始め直す。ツールの定義はセッションの開始時に読まれるため。
 
+### 自動デプロイ（GitHub Actions）
+
+本流の main に push されると、`.github/workflows/deploy.yml` が `npm test` の後に `wrangler deploy` します（Actions の画面から手動でも動かせます）。最初の1回だけ、次を設定します。
+
+1. Cloudflare で account-owned の API token を作る。権限は Workers の **Editor を、この Worker（`gh-mcp-relay`）だけ**に付ける。期限も付ける。`wrangler login` の token は範囲が広いので CI には使わない。
+2. 本流の Settings → Environments に `production` を作り、Deployment branches を `main` だけにする。
+3. その Environment に、secret `CLOUDFLARE_API_TOKEN`（1 の token）と variable `CLOUDFLARE_ACCOUNT_ID` を入れる。repo の secret ではなく Environment の secret にする。
+4. 任意: Environment の required reviewers に自分を入れると、デプロイごとに承認を挟める。
+
+- `KEY_SECRET` は GitHub に置かない。Worker の secret は `wrangler deploy` で消えないので、入れ替えるときだけ手元から `wrangler secret put` する。
+- fork からの PR では、このワークフローは動かず、secret も渡らない。`pull_request_target` は使わない。
+- Worker が最初の1回で作られていること（上の 2）が前提。Editor の token では Worker を新しく作れない。
+
 ### 3. claude.ai にコネクタを登録する（最初の1回）
 
 - URL: 上の「例」の形
