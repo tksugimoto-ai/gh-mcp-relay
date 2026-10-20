@@ -32,18 +32,13 @@ test('matchRoute: パスをそのまま公式 GitHub MCP に渡す', () => {
     upstream: 'https://api.githubcopilot.com/mcp/readonly',
   });
   // ツールセットを 1 つ選ぶパスと、その読み取り専用版。
-  for (const path of ['/mcp/x/actions', '/mcp/x/actions/readonly', '/mcp/x/actions/readonly/', '/mcp/x/pull_requests']) {
+  for (const path of ['/mcp/x/actions', '/mcp/x/actions/readonly/', '/mcp/x/all', '/mcp/x/all/readonly', '/mcp/x/pull_requests']) {
     assert.equal(matchRoute(path)?.upstream, `https://api.githubcopilot.com${path}`, path);
   }
   assert.equal(matchRoute('/.well-known/oauth-protected-resource/mcp/x/actions/readonly').path, '/mcp/x/actions/readonly');
 });
 
 test('matchRoute: 決めた形以外や怪しいパスは拒否する', () => {
-  // repo の外に届くツールを含むツールセットと、上流の更新でツールが増える all は通さない。
-  for (const toolset of ['all', 'gists', 'notifications', 'stargazers', 'orgs', 'users', 'projects', 'copilot_spaces']) {
-    assert.equal(matchRoute(`/mcp/x/${toolset}`), null, toolset);
-    assert.equal(matchRoute(`/mcp/x/${toolset}/readonly`), null, toolset);
-  }
   // ツールセット名に見える readonly・insiders も通さない。insiders は試験中のツールが出る。カンマ区切りは上流が受け付けない。
   assert.equal(matchRoute('/mcp/x/readonly'), null);
   assert.equal(matchRoute('/mcp/x/readonly/readonly'), null);
@@ -114,15 +109,24 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   // owner/repo 以外で対象を決める引数や、repo の外に効くツールは、使わない owner/repo を足しても通さない。
   assert.match(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a', organization: 'other' } }, allowed), /organization/);
   assert.equal(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
-  assert.match(
-    checkCall({ tool: 'repository_ruleset_read', args: { owner: 'tksugimoto', repo: 'a', level: 'enterprise', enterprise: 'e' } }, allowed),
-    /enterprise/,
-  );
+  assert.match(checkCall({ tool: 'issue_read', args: { owner: 'tksugimoto', repo: 'a', enterprise: 'e' } }, allowed), /enterprise/);
   // actions のツールも owner/repo で確かめる。
   assert.equal(checkCall({ tool: 'actions_list', args: { owner: 'tksugimoto', repo: 'a', method: 'list_workflow_runs' } }, allowed), null);
   assert.ok(checkCall({ tool: 'get_job_logs', args: { owner: 'tksugimoto', repo: 'b', run_id: 1 } }, allowed));
-  // owner/repo を取らないツールは通さない。ただし使わない owner/repo を足すと通ってしまうので、
-  // そうしたツールを含むツールセットは matchRoute で通さない（上のテスト）。
+  // 一覧に無いツールは、使わない owner/repo を足しても通さない（上流は使わない引数を無視するため）。
+  for (const tool of [
+    'create_gist',
+    'list_gists',
+    'list_starred_repositories',
+    'get_copilot_space',
+    'dismiss_notification',
+    'list_global_security_advisories',
+    'repository_ruleset_read',
+    'star_repository',
+    'a_new_upstream_tool',
+  ]) {
+    assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', name: 'x' } }, allowed), /使えません/, tool);
+  }
   for (const tool of ['create_gist', 'list_notifications', 'list_global_security_advisories']) {
     assert.ok(checkCall({ tool, args: {} }, allowed), tool);
   }
@@ -176,4 +180,14 @@ test('injectKeyParam: JSON と SSE の両方で引数を足す', () => {
   const sse = `event: message\ndata: ${JSON.stringify(result)}\n\n`;
   const line = injectKeyParam(sse, 'text/event-stream').split('\n')[1];
   assert.ok(JSON.parse(line.slice(5)).result.tools[0].inputSchema.properties[KEY_ARG]);
+});
+
+test('injectKeyParam: 使えないツールを tools/list から外す', () => {
+  const names = ['get_me', 'issue_write', 'actions_list', 'search_code', 'create_gist', 'projects_list', 'a_new_upstream_tool'];
+  const result = { jsonrpc: '2.0', id: 1, result: { tools: names.map((name) => ({ name, inputSchema: { type: 'object' } })) } };
+  const patched = JSON.parse(injectKeyParam(JSON.stringify(result), 'application/json'));
+  assert.deepEqual(
+    patched.result.tools.map((tool) => tool.name),
+    ['get_me', 'issue_write', 'actions_list'],
+  );
 });

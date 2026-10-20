@@ -99,19 +99,18 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 コネクタの URL は、公式 GitHub MCP の URL（`https://api.githubcopilot.com/mcp/...`）のホスト部分だけを中継のものに置き換えたものにします。登録する人にとってルールがわかりやすく、中継はパスをそのまま転送するだけで済みます。
 
-- この中継は GitHub 専用で、汎用の MCP 中継にはしない。転送先は `api.githubcopilot.com` に固定し、パスも `/mcp`、`/mcp/x/<ツールセット>` と、それぞれの `/readonly` 版だけを受け付ける（token をほかの API に流さないため）。`/insiders` は試験中のツールが出るので通さない。
-- `/mcp/x/` で通すツールセットは、ツールが `owner`/`repo` を取り、上流の API も repo のパスになるもの（`actions`、`code_quality`、`code_security`、`dependabot`、`discussions`、`git`、`issues`、`labels`、`pull_requests`、`repos`、`secret_protection`）だけにする。下の「ツールの扱い」の確認は、owner/repo を取らないツールに使わない owner/repo を足されると通ってしまうので、そうしたツールを含むツールセット（gists・notifications・stargazers・orgs・users・projects・copilot_spaces・security_advisories など）は通さない。上流の更新でツールが増える `all` も通さない。copilot と governance は、要るまで通さない。
-- 何ができるかは App の権限で決まる。actions の再実行などを使わせたくないときは、App にその権限を付けない。複数のツールセットを組み合わせる `X-MCP-Toolsets` ヘッダーは転送しない（中継がリクエストを書き換える所を増やさないため）。組み合わせたいときはコネクタを並べる。
+- この中継は GitHub 専用で、汎用の MCP 中継にはしない。転送先は `api.githubcopilot.com` に固定し、パスも `/mcp`、`/mcp/x/<ツールセット>`（`all` を含む）と、それぞれの `/readonly` 版だけを受け付ける（token をほかの API に流さないため）。`/insiders` は試験中のツールが出るので通さない。
+- ツールセットでは絞らず、使えるツールは下の「ツールの扱い」の一覧で決める。`/mcp/x/all` のコネクタ 1 つで、既定のツールも actions なども使える。
+- 何ができるかは App の権限で決まる。actions の再実行などを使わせたくないときは、App にその権限を付けない。複数のツールセットを組み合わせる `X-MCP-Toolsets` ヘッダーは転送しない（中継がリクエストを書き換える所を増やさないため）。
 
 ### ツールの扱い
 
 - 通す JSON-RPC のメソッドは、`initialize`・`ping`・`tools/list`・`tools/call`・`notifications/*` だけにする。公式 GitHub MCP は repo の中身をリソース（`repo://{owner}/{repo}/contents{/path*}` など）としても出していて、`resources/read` などは repo を URI で渡すので、引数の `owner`/`repo` では確かめられないため。
-- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。
-- `owner`/`repo` を取らないツール（`get_teams`、`create_repository`、`search_code` など）は、`get_me` を除いて拒否する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。
-- Projects のツール（`projects_list`、`projects_write` など）は、`owner` だけを取りアカウントや org 全体に効く。使わない `repo` を足すと確認を通ってしまうので、名前に `project` を含むツールは引数によらず拒否する。
-- 同じ理由で、key の repo の外に効くツール（`create_repository`、`get_teams`、`get_team_members`）は名前で拒否し、owner/repo とは別に対象のアカウントや org を決める引数（`organization`、`org`、`enterprise`、`user`、`username`、`gist_id`、`notificationID`）が付いた呼び出しも拒否する。たとえば `fork_repository` の `organization` で、許した repo を別の org に fork させない。governance のツール（`repository_ruleset_read` など）の `enterprise` で、enterprise 全体に届かせない。名前で拒否しているので、そうしたツールや引数が、通しているツールセットに別の名前で増えると通ってしまう。
+- 使ってよいツールを一覧（`REPO_TOOLS`）で持ち、一覧に無いツールは引数によらず拒否し、`tools/list` からも外す。一覧に入れるのは、`owner` と `repo` を必ず取り、上流の API も repo のパスになる（key の repo の中に閉じる）と確かめたツールだけ。上流は使わない引数を無視するので、`owner`/`repo` を取らないツールに使わない `owner`/`repo` を足されると、引数の確認を通ってしまう（Projects、`create_repository`、`create_gist`、`list_starred_repositories` など）。名前で拒否する方式では、上流がそうしたツールを足すたびに穴になるので、通すものを並べる方式にする。上流が足したツールは、一覧に足すまで使えない。
+- 一覧に入れないもの: `search_*`（クエリでほかの repo にも届きうる）、Projects、`create_repository`・`get_teams`・`get_team_members`、gists・notifications・stargazers・orgs・users・copilot_spaces のツール、`list_global_security_advisories` など repo を取らないもの。copilot（Copilot の agent を動かす）と governance（org・enterprise の level がある）、`delete_repository` も、要るまで入れない。
+- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。
+- owner/repo とは別に対象のアカウントや org を決める引数（`organization`、`org`、`enterprise`、`user`、`username`、`gist_id`、`notificationID`）が付いた呼び出しは拒否する。たとえば `fork_repository` の `organization` で、許した repo を別の org に fork させない。一覧のツールにこうした引数が別の名前で足されると通ってしまう。
 - GraphQL の node ID（`threadId`、`commentNodeID` など）や `sub_issue_write` の `sub_issue_id` は repo を含まないので、owner/repo を許した repo にしたまま、ID で別の repo のものを指せるおそれがある。上流が owner/repo と ID の食い違いを断るかは、まだ確かめていない。
-- `search_*` は `owner`/`repo` を省略でき（`search_issues` など）、クエリでほかの repo にも届きうるので、引数によらず拒否する。
 - 中継は通信の中身をこれ以上は解析しない。ツールごとに細かく制限したくなったら、公式サーバーへの転送をやめて、少数の自前ツールを実装する。
 
 ## cloud の環境構成

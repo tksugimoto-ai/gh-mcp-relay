@@ -8,37 +8,84 @@ const KEY_PREFIX = 'gh-mcp-relay';
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const EXPIRES_RE = /^\d{4}-\d{2}-\d{2}$/;
 const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
-// 転送してよいパス。既定のツールセット（`/mcp`）、ツールセットを 1 つ選ぶ `/mcp/x/<ツールセット>` と、
-// それぞれの読み取り専用版。`/insiders` は試験中のツールが出るので通さない。
-const UPSTREAM_PATH_RE = /^\/mcp(?:\/x\/([a-z_]+))?(\/readonly)?\/?$/;
-// `/mcp/x/<ツールセット>` で通すツールセット。ツールが owner/repo を取り、上流の API も repo のパスになるものだけ。
-// owner/repo を取らないツールは、使わない owner/repo を足すと checkCall を通ってしまうので、そうしたツールを含む
-// ツールセット（gists・notifications・stargazers・orgs・users・projects など）と、上流の更新でツールが増える all は通さない。
-const ALLOWED_TOOLSETS = new Set([
-  'actions',
-  'code_quality',
-  'code_security',
-  'dependabot',
-  'discussions',
-  'git',
-  'issues',
-  'labels',
-  'pull_requests',
-  'repos',
-  'secret_protection',
-]);
+// 転送してよいパス。既定のツールセット（`/mcp`）、ツールセットを 1 つ選ぶ `/mcp/x/<ツールセット>`（`all` を含む）と、
+// それぞれの読み取り専用版。どのツールを使えるかは REPO_TOOLS で決めるので、ツールセットは選ばない。
+// `readonly`・`insiders` はツールセット名にしない（`/insiders` は試験中のツールが出るので通さない）。
+const UPSTREAM_PATH_RE = /^\/mcp(?:\/x\/(?!readonly\b|insiders\b)[a-z_]+)?(\/readonly)?\/?$/;
 
+// 使ってよいツール。owner と repo を必ず取り、上流の API も repo のパスになる（key の repo の中に閉じる）と
+// 確かめたものだけ。一覧に無いツールは、引数によらず使わせず、tools/list からも外す。owner/repo を取らない
+// ツールは、使わない owner/repo を足されると引数の確認を通ってしまうので、一覧に入れない（search_*、
+// Projects、create_repository、get_teams、gists、notifications、stargazers など）。上流がツールを足しても、
+// ここに足すまでは使えない。
+const REPO_TOOLS = new Set([
+  // repos・git
+  'create_branch',
+  'create_or_update_file',
+  'delete_file',
+  'fork_repository',
+  'get_commit',
+  'get_file_contents',
+  'get_latest_release',
+  'get_release_by_tag',
+  'get_repository_tree',
+  'get_tag',
+  'list_branches',
+  'list_commits',
+  'list_releases',
+  'list_repository_collaborators',
+  'list_tags',
+  'push_files',
+  // issues・labels
+  'add_issue_comment',
+  'get_label',
+  'issue_read',
+  'issue_write',
+  'label_write',
+  'list_issue_fields',
+  'list_issue_types',
+  'list_issues',
+  'list_label',
+  'sub_issue_write',
+  'update_issue_comment',
+  // pull_requests
+  'add_comment_to_pending_review',
+  'add_reply_to_pull_request_comment',
+  'create_pull_request',
+  'list_pull_requests',
+  'merge_pull_request',
+  'pull_request_read',
+  'pull_request_review_write',
+  'request_copilot_review',
+  'update_pull_request',
+  'update_pull_request_branch',
+  // actions
+  'actions_get',
+  'actions_list',
+  'actions_run_trigger',
+  'get_job_logs',
+  // code_quality・code_security・dependabot・secret_protection・security_advisories
+  'get_code_quality_finding',
+  'get_code_scanning_alert',
+  'get_dependabot_alert',
+  'get_secret_scanning_alert',
+  'list_code_scanning_alerts',
+  'list_dependabot_alerts',
+  'list_repository_security_advisories',
+  'list_secret_scanning_alerts',
+  'run_secret_scanning',
+  // discussions
+  'discussion_comment_write',
+  'get_discussion',
+  'get_discussion_comments',
+  'list_discussion_categories',
+  'list_discussions',
+]);
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
-// owner だけを取り、アカウントや org 全体に効くツール（Projects）。repo を足されても上流は無視するので、
-// 引数によらず使わせない。
-const OWNER_SCOPED_TOOL_RE = /project/;
-// owner/repo を取らず、key の repo の外に効くツール。使わない owner/repo を足されても上流は無視するので、
-// 名前で使わせない（create_repository は新しい repo を作り、get_teams・get_team_members は org を読む）。
-const OUT_OF_REPO_TOOLS = new Set(['create_repository', 'get_teams', 'get_team_members']);
 // owner/repo とは別に対象のアカウントや org を決める引数。中継は確かめられないので、付いていたら使わせない
-// （fork_repository の organization で、許した repo を別の org に fork させない、governance のツールの
-// enterprise で、enterprise 全体のルールに届かせない、など）。
+// （fork_repository の organization で、許した repo を別の org に fork させない、など）。REPO_TOOLS のツールに
+// こうした引数が足されたときの備え。
 const TARGET_ARGS = new Set(['organization', 'org', 'enterprise', 'user', 'username', 'gist_id', 'notificationID']);
 // 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
 // owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
@@ -52,8 +99,7 @@ export function matchRoute(pathname) {
     kind = 'metadata';
     path = pathname.slice(METADATA_PREFIX.length - 1);
   }
-  const match = UPSTREAM_PATH_RE.exec(path);
-  if (!match || (match[1] && !ALLOWED_TOOLSETS.has(match[1]))) return null;
+  if (!UPSTREAM_PATH_RE.test(path)) return null;
   return { kind, path, upstream: `${UPSTREAM_ORIGIN}${path}` };
 }
 
@@ -136,17 +182,18 @@ export function reposInArgs(args) {
   return found;
 }
 
+export function isAllowedTool(name) {
+  return REPO_TOOLS.has(name) || REPOLESS_TOOLS.has(name);
+}
+
 // tools/call を key の範囲で許すか。許さないときは理由を返す。
 export function checkCall(call, allowedRepos) {
-  // search_* は owner/repo を省略でき、クエリでほかの repo にも届きうるので、引数によらず使わせない。
-  if (String(call.tool).startsWith('search_')) return 'search_* のツールは使えません';
-  if (OWNER_SCOPED_TOOL_RE.test(call.tool)) return 'Projects のツールは使えません';
-  if (OUT_OF_REPO_TOOLS.has(call.tool)) return `${call.tool} は使えません`;
+  if (!isAllowedTool(call.tool)) return `${call.tool} は中継で使えません`;
   const targetArg = Object.keys(call.args ?? {}).find((name) => TARGET_ARGS.has(name));
   if (targetArg) return `引数 ${targetArg} は使えません`;
   const repos = reposInArgs(call.args);
   if (repos.length === 0) {
-    return REPOLESS_TOOLS.has(call.tool) ? null : 'owner と repo を取らないツールは使えません';
+    return REPOLESS_TOOLS.has(call.tool) ? null : 'owner と repo が要ります';
   }
   const denied = repos.find((r) => !allowedRepos.includes(r));
   return denied ? `${denied} はこの key で許可されていません` : null;
@@ -188,11 +235,12 @@ const KEY_PROPERTY = {
   description: 'セッションの開始時に示された gh-mcp-relay の key（GH_MCP_RELAY_KEY）。どのツールでも必須。',
 };
 
-// tools/list の結果の各ツールに gh_mcp_relay_key 引数を足す。Claude が引数を渡し忘れないようにするため。
+// tools/list の結果から使えないツールを外し、残りの各ツールに gh_mcp_relay_key 引数を足す。
+// Claude が使えないツールを呼んだり、引数を渡し忘れたりしないようにするため。
 function injectIntoResult(msg) {
   const tools = msg?.result?.tools;
   if (!Array.isArray(tools)) return msg;
-  const patched = tools.map((tool) => {
+  const patched = tools.filter((tool) => isAllowedTool(tool.name)).map((tool) => {
     const schema = tool.inputSchema ?? { type: 'object' };
     const required = new Set(schema.required ?? []);
     required.add(KEY_ARG);
