@@ -6,6 +6,13 @@ name: deploy
 on:
   push:
     branches: [main]
+    # Worker に関係しないファイルだけの変更ではデプロイしない（test/ は CI を兼ねるので外さない）
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'examples/**'
+      - '.devcontainer/**'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:

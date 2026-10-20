@@ -109,7 +109,7 @@ npm run deploy
 
 ### 自動デプロイ（GitHub Actions）
 
-本流の main に push されると、`.github/workflows/deploy.yml` が `npm test` の後に `wrangler deploy` します（Actions の画面から手動でも動かせます）。最初の1回だけ、次を設定します。
+本流の main に push されると、`.github/workflows/deploy.yml` が `npm test` の後に `wrangler deploy` します（Actions の画面から手動でも動かせます）。md・`docs/`・`examples/`・`.devcontainer/`・`LICENSE` だけの変更ではデプロイしません。最初の1回だけ、次を設定します。
 
 1. Cloudflare で account-owned の API token を作る。権限は Workers の **Editor を、この Worker（`gh-mcp-relay`）だけ**に付ける。期限も付ける（切れるとデプロイが認証エラーで失敗するので、作り直して secret を入れ替える）。`wrangler login` の token は範囲が広いので CI には使わない。
 2. 本流の Settings → Environments に `production` を作り、Deployment branches を `main` だけにする。
