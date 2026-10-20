@@ -24,6 +24,8 @@ concurrency:
 
 jobs:
   deploy:
+    # fork（main を同期したときなど）では動かさない。token が無く、必ず失敗するため。
+    if: github.repository == 'tksugimoto/gh-mcp-relay'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
