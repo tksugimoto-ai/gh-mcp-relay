@@ -77,6 +77,8 @@ GitHub App とコネクタは1つだけ作り、どのセッションからも�
 
 GitHub App を入れられない repo（ほかの人の private の repo など）は、OAuth App で認可する読み取り専用のコネクタを別に足して読みます（URL は `/mcp/readonly`）。OAuth App の token は GitHub 側で repo を絞れないので、境界は key と readonly のパスだけになります。手順と弱くなる点は [README.md](../README.md) にまとめています。
 
+このコネクタは読み取り専用なので、ほかの人の個人のアカウントの private の repo（`tksugimoto-ai` が collaborator）には PR を出せません。PR 専用の OAuth のコネクタ（`/mcp/x/pull_requests`）を足す案がありますが、OAuth App の token は `repo` の scope を持ち、個人の repo の collaborator は必ず Write なので、そのままでは `merge_pull_request` が通ってしまいます。足すなら、中継でこのパスの `merge_pull_request` を常に拒否します（URL の query で指定する案より、決め打ちのほうが書き忘れが無い）。claude.ai のコネクタの設定でのツールの拒否は補助で、どの対策も token が漏れたときは効きません。持ち主に GitHub App を install してもらい、`/mcp` で PR を出す方法もあります（未確認）。詳しくは [README.md](../README.md) にまとめています。どれもまだ試していません。
+
 | 守るもの | 強制するもの | 仕組み |
 | --- | --- | --- |
 | セッションごとの repo の範囲 | 中継 | key に書いた `owner/repo` と、ツール引数の `owner`/`repo` を照らし合わせる |

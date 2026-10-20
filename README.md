@@ -185,6 +185,20 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 - cloud の `/web-setup` は、`gh` の token をアカウント全体の GitHub の接続として保存し、今の接続を置き換える。環境ごとに分けられない。
 - 中継を通さずに、公式 GitHub MCP の readonly の URL をそのままコネクタにすると、key の確認が無く、全部のセッションから全部の repo を読める。
 
+### App を入れられない他ユーザー個人の repo に PR を出す場合（未実装の案）
+
+上の OAuth App のコネクタは `/mcp/readonly` なので、PR も Issue も作れません（書き込みのツールが出ないため。Issue 用のコネクタは別に考える）。org の repo なら org に App を入れてもらう道がありますが、ほかの人の個人のアカウントの private の repo（`tksugimoto-ai` が collaborator）では、今のところ PR を出す手段がありません。
+
+今後の案として、次のことを考えています。どれもまだ試していません。
+
+- PR 専用の OAuth のコネクタ（URL は `https://<中継>/mcp/x/pull_requests`）を足す。中継のパスの許可に足し、このパスでも `repo` の scope を求める。このツールセットでどのツールが出るかは、まだ確かめていない。
+- このとき、何もしなければマージができてしまう。PR のツールセットには `merge_pull_request` が入っていて、OAuth App の token は `repo` の scope を持ち、個人のアカウントの repo の collaborator は必ず Write になるので、GitHub 側では止まらない。
+- 対策として、中継でこのパスの `merge_pull_request` を常に拒否する。拒否するツールを URL の query で指定する案もあるが、コネクタを登録するときに書き忘れると通ってしまうので、中継に決め打ちするほうがよい。
+- claude.ai のコネクタの設定で、ツールごとに使わせないようにすることもできるが、これは補助にとどめる（設定を変えれば外せるため）。
+- どの対策も中継（と claude.ai）を通る場合の話で、token そのものが漏れたときは、マージも `main` への push も防げない。弱くなる点は上の読み取り専用のコネクタと同じ。
+
+代わりの方法として、その repo の持ち主に独自の GitHub App を install してもらい、上の `/mcp` のコネクタで PR を出すこともできると考えられる（未確認）。この場合は GitHub 側で App の install 先と権限に絞られるので、OAuth App より守りは強い。
+
 ## key の取り消し
 
 key は中継に記録しないので、1つずつ取り消すことはできません。期限（`--expires`）を付けて発行し、全部を無効にしたいときは `KEY_SECRET` を入れ替えて、key を発行し直します。入れ替えるとすべての key が使えなくなるので、全環境の `GH_MCP_RELAY_KEY` を差し替えます。
