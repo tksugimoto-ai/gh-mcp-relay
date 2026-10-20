@@ -110,7 +110,8 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - 一覧に入れないもの: `search_*`（クエリでほかの repo にも届きうる）、Projects、`create_repository`・`get_teams`・`get_team_members`、gists・notifications・stargazers・orgs・users・copilot_spaces のツール、`list_global_security_advisories` など repo を取らないもの。copilot（Copilot の agent を動かす）と governance（org・enterprise の level がある）、`delete_repository` も、要るまで入れない。
 - 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。
 - owner/repo とは別に対象のアカウントや org を決める引数（`organization`、`org`、`enterprise`、`user`、`username`、`gist_id`、`notificationID`）が付いた呼び出しは拒否する。たとえば `fork_repository` の `organization` で、許した repo を別の org に fork させない。一覧のツールにこうした引数が別の名前で足されると通ってしまう。
-- GraphQL の node ID（`threadId`、`commentNodeID` など）や `sub_issue_write` の `sub_issue_id` は repo を含まないので、owner/repo を許した repo にしたまま、ID で別の repo のものを指せるおそれがある。上流が owner/repo と ID の食い違いを断るかは、まだ確かめていない。
+- repo を含まない ID で対象を決める引数（GraphQL の node ID の `threadId`・`commentNodeID`、`sub_issue_write` の `sub_issue_id`・`after_id`・`before_id`）も拒否する。owner/repo を許した repo にしたまま、ID で別の repo のものを指せるため（`pull_request_review_write` の `resolve_thread` は、説明に owner/repo を使わないとある）。このため、中継経由ではレビューのスレッドの解決、Discussion のコメントへの返信や編集、sub-issue の付け外しはできない。上流が ID の食い違いを断ると確かめられたら、通すことを考える。
+- `fork_repository` は本人のアカウントに fork を作るので、厳密には key の repo の中に閉じない。作った fork には key が無いので、それ以上は触れない。fork から PR を出す使い方のために残す。
 - 中継は通信の中身をこれ以上は解析しない。ツールごとに細かく制限したくなったら、公式サーバーへの転送をやめて、少数の自前ツールを実装する。
 
 ## cloud の環境構成

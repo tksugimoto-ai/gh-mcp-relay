@@ -11,7 +11,7 @@ const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
 // 転送してよいパス。既定のツールセット（`/mcp`）、ツールセットを 1 つ選ぶ `/mcp/x/<ツールセット>`（`all` を含む）と、
 // それぞれの読み取り専用版。どのツールを使えるかは REPO_TOOLS で決めるので、ツールセットは選ばない。
 // `readonly`・`insiders` はツールセット名にしない（`/insiders` は試験中のツールが出るので通さない）。
-const UPSTREAM_PATH_RE = /^\/mcp(?:\/x\/(?!readonly\b|insiders\b)[a-z_]+)?(\/readonly)?\/?$/;
+const UPSTREAM_PATH_RE = /^\/mcp(?:\/x\/(?!(?:readonly|insiders)(?:\/|$))[a-z_]+)?(\/readonly)?\/?$/;
 
 // 使ってよいツール。owner と repo を必ず取り、上流の API も repo のパスになる（key の repo の中に閉じる）と
 // 確かめたものだけ。一覧に無いツールは、引数によらず使わせず、tools/list からも外す。owner/repo を取らない
@@ -19,7 +19,7 @@ const UPSTREAM_PATH_RE = /^\/mcp(?:\/x\/(?!readonly\b|insiders\b)[a-z_]+)?(\/rea
 // Projects、create_repository、get_teams、gists、notifications、stargazers など）。上流がツールを足しても、
 // ここに足すまでは使えない。
 const REPO_TOOLS = new Set([
-  // repos・git
+  // repos・git（fork_repository は本人のアカウントに fork を作るが、作った fork には key が無いので触れない）
   'create_branch',
   'create_or_update_file',
   'delete_file',
@@ -85,8 +85,23 @@ const REPO_TOOLS = new Set([
 const REPOLESS_TOOLS = new Set(['get_me']);
 // owner/repo とは別に対象のアカウントや org を決める引数。中継は確かめられないので、付いていたら使わせない
 // （fork_repository の organization で、許した repo を別の org に fork させない、など）。REPO_TOOLS のツールに
-// こうした引数が足されたときの備え。
-const TARGET_ARGS = new Set(['organization', 'org', 'enterprise', 'user', 'username', 'gist_id', 'notificationID']);
+// こうした引数が足されたときの備えも兼ねる。repo を含まない ID（GraphQL の node ID や Issue の ID）で対象を
+// 決める引数も、owner/repo を許した repo にしたまま別の repo のものを指せるので使わせない（pull_request_review_write の
+// resolve_thread の threadId、discussion_comment_write の commentNodeID、sub_issue_write の sub_issue_id など）。
+const TARGET_ARGS = new Set([
+  'organization',
+  'org',
+  'enterprise',
+  'user',
+  'username',
+  'gist_id',
+  'notificationID',
+  'threadId',
+  'commentNodeID',
+  'sub_issue_id',
+  'after_id',
+  'before_id',
+]);
 // 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
 // owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
 const ALLOWED_METHODS = new Set(['initialize', 'ping', 'tools/list', 'tools/call']);

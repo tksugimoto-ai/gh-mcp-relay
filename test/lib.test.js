@@ -44,6 +44,7 @@ test('matchRoute: 決めた形以外や怪しいパスは拒否する', () => {
   assert.equal(matchRoute('/mcp/x/readonly/readonly'), null);
   assert.equal(matchRoute('/mcp/x/insiders'), null);
   assert.equal(matchRoute('/mcp/x/insiders/readonly'), null);
+  assert.equal(matchRoute('/mcp/x/readonly_x')?.path, '/mcp/x/readonly_x', '名前全体が一致するときだけ断る');
   assert.equal(matchRoute('/mcp/insiders'), null);
   assert.equal(matchRoute('/mcp/x/all/insiders'), null);
   assert.equal(matchRoute('/mcp/x/all/readonly/insiders'), null);
@@ -110,6 +111,17 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   assert.match(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a', organization: 'other' } }, allowed), /organization/);
   assert.equal(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
   assert.match(checkCall({ tool: 'issue_read', args: { owner: 'tksugimoto', repo: 'a', enterprise: 'e' } }, allowed), /enterprise/);
+  // repo を含まない ID で対象を決める引数は、ほかの repo のものを指せるので通さない。使わない操作はそのまま通る。
+  const idArgs = [
+    ['pull_request_review_write', { method: 'resolve_thread', threadId: 'PRRT_x' }, /threadId/],
+    ['discussion_comment_write', { method: 'update', commentNodeID: 'DC_x', body: 'b' }, /commentNodeID/],
+    ['sub_issue_write', { method: 'add', issue_number: 1, sub_issue_id: 2 }, /sub_issue_id/],
+    ['sub_issue_write', { method: 'reprioritize', issue_number: 1, sub_issue_id: 2, after_id: 3 }, /_id/],
+  ];
+  for (const [tool, args, reason] of idArgs) {
+    assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), reason, tool);
+  }
+  assert.equal(checkCall({ tool: 'pull_request_review_write', args: { owner: 'tksugimoto', repo: 'a', method: 'create', pullNumber: 1 } }, allowed), null);
   // actions のツールも owner/repo で確かめる。
   assert.equal(checkCall({ tool: 'actions_list', args: { owner: 'tksugimoto', repo: 'a', method: 'list_workflow_runs' } }, allowed), null);
   assert.ok(checkCall({ tool: 'get_job_logs', args: { owner: 'tksugimoto', repo: 'b', run_id: 1 } }, allowed));
