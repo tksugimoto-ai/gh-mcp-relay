@@ -2,7 +2,13 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "gh-mcp-relay",
   "main": "src/index.js",
-  "compatibility_date": "2026-10-01"
+  "compatibility_date": "2026-10-01",
+  // Workers Logs に console.log の出力（パス・ツール名・結果だけ）を残す。
+  // リクエストごとの invocation log は URL やリクエストの情報を含むので残さない。
+  "observability": {
+    "enabled": true,
+    "logs": { "invocation_logs": false }
+  }
   // key の署名用の鍵は secret に入れる（repo には置かない）。
   //   npx wrangler secret put KEY_SECRET < .key-secret   （作り方は README）
 }

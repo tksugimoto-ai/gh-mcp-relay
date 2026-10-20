@@ -82,6 +82,8 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 ログにはパス・ツール名・結果だけを残し、token・ヘッダー・key は残しません。
 
+`wrangler.jsonc` で Workers Logs を有効にしているので、このログは Cloudflare に保存され、ダッシュボードで後から見られます（拒否された呼び出しを追うため）。リクエストごとの invocation log は URL やリクエストの情報を含むので、無効にしています。保存したくなければ `observability.enabled` を `false` にしてください。
+
 ## 準備
 
 ### 1. GitHub App を作る
