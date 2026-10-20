@@ -172,7 +172,7 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 
 ### App を入れられない他ユーザー個人の repo に PR を出す場合（未実装の案）
 
-上の OAuth App のコネクタは `/mcp/readonly` なので、PR は作れません。org の repo なら org に App を入れてもらう道がありますが、ほかの人の個人のアカウントの private の repo（`tksugimoto-ai` が collaborator）では、今のところ PR を出す手段がありません。
+上の OAuth App のコネクタは `/mcp/readonly` なので、PR も Issue も作れません（書き込みのツールが出ないため。Issue 用のコネクタは別に考える）。org の repo なら org に App を入れてもらう道がありますが、ほかの人の個人のアカウントの private の repo（`tksugimoto-ai` が collaborator）では、今のところ PR を出す手段がありません。
 
 今後の案として、次のことを考えています。どれもまだ試していません。
 
