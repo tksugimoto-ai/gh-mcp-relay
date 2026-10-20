@@ -99,7 +99,8 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 コネクタの URL は、公式 GitHub MCP の URL（`https://api.githubcopilot.com/mcp/...`）のホスト部分だけを中継のものに置き換えたものにします。登録する人にとってルールがわかりやすく、中継はパスをそのまま転送するだけで済みます。
 
-- この中継は GitHub 専用で、汎用の MCP 中継にはしない。転送先は `api.githubcopilot.com` に固定し、パスも `/mcp` と `/mcp/readonly` だけを受け付ける（token をほかの API に流さないため。また、ツールの拒否は既定のツールセットのツールだけを確かめて名前で決めているので、`/mcp/x/gists` などほかのツールセットを通すと、確かめていないツールが使えてしまうため）。
+- この中継は GitHub 専用で、汎用の MCP 中継にはしない。転送先は `api.githubcopilot.com` に固定し、パスも `/mcp`、`/mcp/x/<ツールセット>`（`all` を含む）と、それぞれの `/readonly` 版だけを受け付ける（token をほかの API に流さないため）。`/insiders` は試験中のツールが出るので通さない。
+- ツールセットで絞らないのは、「何ができるかは App の権限、どの repo かは key」で分けるため。repo の範囲は、ツールセットによらず下の「ツールの扱い」の確認で絞る。actions の再実行などを使わせたくないときは、App にその権限を付けない。複数のツールセットを組み合わせる `X-MCP-Toolsets` ヘッダーは転送しない（中継がリクエストを書き換える所を増やさないため。組み合わせたいときは `/mcp/x/all` を使う）。
 
 ### ツールの扱い
 
@@ -107,7 +108,8 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。
 - `owner`/`repo` を取らないツール（`get_teams`、`create_repository`、`search_code` など）は、`get_me` を除いて拒否する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。
 - Projects のツール（`projects_list`、`projects_write` など）は、`owner` だけを取りアカウントや org 全体に効く。使わない `repo` を足すと確認を通ってしまうので、名前に `project` を含むツールは引数によらず拒否する。
-- 同じ理由で、key の repo の外に効くツール（`create_repository`、`get_teams`、`get_team_members`）は名前で拒否し、owner/repo とは別に対象のアカウントや org を決める引数（`organization`、`org`、`user`、`username`、`gist_id`、`notificationID`）が付いた呼び出しも拒否する。たとえば `fork_repository` の `organization` で、許した repo を別の org に fork させない。名前で拒否しているので、そうしたツールや引数が既定のツールセットに別の名前で増えると通ってしまう（ほかのツールセットはパスで通さない）。
+- 同じ理由で、key の repo の外に効くツール（`create_repository`、`get_teams`、`get_team_members`）は名前で拒否し、owner/repo とは別に対象のアカウントや org を決める引数（`organization`、`org`、`enterprise`、`user`、`username`、`gist_id`、`notificationID`）が付いた呼び出しも拒否する。たとえば `fork_repository` の `organization` で、許した repo を別の org に fork させない。governance のツール（`repository_ruleset_read` など）の `enterprise` で、enterprise 全体に届かせない。名前で拒否しているので、そうしたツールや引数が別の名前で増えると通ってしまう。
+- GraphQL の node ID（`threadId`、`commentNodeID` など）は repo を含まないので、owner/repo を許した repo にしたまま、ID で別の repo のものを指せるおそれがある。上流が owner/repo と ID の食い違いを断るかは、まだ確かめていない。
 - `search_*` は `owner`/`repo` を省略でき（`search_issues` など）、クエリでほかの repo にも届きうるので、引数によらず拒否する。
 - 中継は通信の中身をこれ以上は解析しない。ツールごとに細かく制限したくなったら、公式サーバーへの転送をやめて、少数の自前ツールを実装する。
 

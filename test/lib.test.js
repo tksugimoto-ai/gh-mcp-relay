@@ -30,13 +30,22 @@ test('matchRoute: パスをそのまま公式 GitHub MCP に渡す', () => {
     path: '/mcp/readonly',
     upstream: 'https://api.githubcopilot.com/mcp/readonly',
   });
+  // ツールセットを 1 つ選ぶパスと、その読み取り専用版。
+  for (const path of ['/mcp/x/actions', '/mcp/x/actions/readonly', '/mcp/x/all', '/mcp/x/all/readonly/', '/mcp/x/pull_requests']) {
+    assert.equal(matchRoute(path)?.upstream, `https://api.githubcopilot.com${path}`, path);
+  }
+  assert.equal(matchRoute('/.well-known/oauth-protected-resource/mcp/x/all/readonly').path, '/mcp/x/all/readonly');
 });
 
-test('matchRoute: /mcp と /mcp/readonly 以外や怪しいパスは拒否する', () => {
-  // ほかのツールセットのツールは、中継の拒否リストで確かめていないので通さない。
-  assert.equal(matchRoute('/mcp/x/gists'), null);
-  assert.equal(matchRoute('/mcp/x/issues/readonly'), null);
-  assert.equal(matchRoute('/.well-known/oauth-protected-resource/mcp/x/notifications'), null);
+test('matchRoute: 決めた形以外や怪しいパスは拒否する', () => {
+  // insiders は試験中のツールが出るので通さない。カンマ区切りは上流が受け付けない。
+  assert.equal(matchRoute('/mcp/insiders'), null);
+  assert.equal(matchRoute('/mcp/x/all/insiders'), null);
+  assert.equal(matchRoute('/mcp/x/all/readonly/insiders'), null);
+  assert.equal(matchRoute('/mcp/x/issues,pull_requests'), null);
+  assert.equal(matchRoute('/mcp/x/'), null);
+  assert.equal(matchRoute('/mcp/x/a/b'), null);
+  assert.equal(matchRoute('/mcp/readonly/x/all'), null);
   assert.equal(matchRoute('/'), null);
   assert.equal(matchRoute('/user'), null);
   assert.equal(matchRoute('/mcpx'), null);
@@ -53,6 +62,8 @@ test('resourceMetadata: GitHub を認可サーバーとして返す', () => {
   });
   // OAuth App のコネクタを登録する readonly のパスでは、private の repo を読むための scope を返す。
   assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/readonly').scopes_supported, ['repo']);
+  assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/x/all/readonly').scopes_supported, ['repo']);
+  assert.equal(resourceMetadata('https://relay.example.com', '/mcp/x/all').scopes_supported, undefined);
 });
 
 test('createKey / verifyKey: 読める形で、署名を確かめる', async () => {
@@ -91,6 +102,17 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   // owner/repo 以外で対象を決める引数や、repo の外に効くツールは、使わない owner/repo を足しても通さない。
   assert.match(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a', organization: 'other' } }, allowed), /organization/);
   assert.equal(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
+  assert.match(
+    checkCall({ tool: 'repository_ruleset_read', args: { owner: 'tksugimoto', repo: 'a', level: 'enterprise', enterprise: 'e' } }, allowed),
+    /enterprise/,
+  );
+  // actions のツールも owner/repo で確かめる。
+  assert.equal(checkCall({ tool: 'actions_list', args: { owner: 'tksugimoto', repo: 'a', method: 'list_workflow_runs' } }, allowed), null);
+  assert.ok(checkCall({ tool: 'get_job_logs', args: { owner: 'tksugimoto', repo: 'b', run_id: 1 } }, allowed));
+  // owner/repo を取らないほかのツールセットのツールは通さない。
+  for (const tool of ['create_gist', 'list_notifications', 'list_global_security_advisories']) {
+    assert.ok(checkCall({ tool, args: {} }, allowed), tool);
+  }
   for (const tool of ['create_repository', 'get_teams', 'get_team_members']) {
     assert.ok(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', name: 'x' } }, allowed), tool);
   }

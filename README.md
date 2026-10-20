@@ -59,7 +59,7 @@ cloud 環境「pocket-ssh-agent」のセッション
 | key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>` |
 | key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
 
-コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）と `/mcp/readonly` だけを受け付けます。中継はツールや引数を名前で拒否していて、確かめたのは既定のツールセットのツールだけなので、`/mcp/x/<ツールセット>` などほかのパスは通しません。
+コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）、`/mcp/x/<ツールセット>`（`all` を含む）と、それぞれの `/readonly` 版を受け付けます（`/insiders` は通しません）。ツールセットによらず、中継は引数の `owner`/`repo` を key と照らします。何ができるか（actions の再実行など）は App の権限で決まるので、使わせたくない操作は App の権限を付けないでおきます。
 
 key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形です。期限の日付になった時点（その日の 0 時 UTC、日本時間 9 時）から使えなくなります。中身は読めるので、どの repo 用の key か見ればわかります。署名は HMAC-SHA256 で、署名用の鍵（`KEY_SECRET`）を持つ人しか作れません。
 
@@ -154,11 +154,12 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 | | 上のコネクタ | 足すコネクタ |
 | --- | --- | --- |
 | OAuth のクライアント | GitHub App | OAuth App |
-| URL | `https://<中継>/mcp` | `https://<中継>/mcp/readonly` |
+| URL | `https://<中継>/mcp` など | `https://<中継>/mcp/readonly` など（`/readonly` で終わるパスだけ） |
 | 届く範囲を絞るもの | GitHub（App の install 先）と key | key だけ |
 | 書き込み | できる（App の権限の範囲で） | できない（公式 GitHub MCP の readonly で、書き込みのツールが出ない） |
 
 - 同じ URL のコネクタは 2 つ目を登録できないので、readonly のパスで URL を分けます。読み取り専用にすること自体も、この用途に合っています。
+- ほかのツールセットを読むときも、`/mcp/x/<ツールセット>/readonly` や `/mcp/x/all/readonly` のように `/readonly` の付いたパスで登録します。OAuth App の token には App の権限による制限が無いので、`/readonly` の無いパスでは登録しません。
 - 中継の確認（key の署名、引数の `owner`/`repo`、`search_*` と Projects のツールの拒否）は、そのまま効きます。
 - OAuth App の token は、認可のときに求めた scope しか持ちません。private の repo を読むには `repo` の scope が要るので、中継は readonly のパスでだけ、メタデータの `scopes_supported` と 401 の `WWW-Authenticate` で `repo` を伝えます。
 

@@ -8,9 +8,10 @@ const KEY_PREFIX = 'gh-mcp-relay';
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const EXPIRES_RE = /^\d{4}-\d{2}-\d{2}$/;
 const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
-// 転送してよいパス。既定のツールセット（`/mcp`）とその読み取り専用版だけ。ツールの拒否は名前で見ているので、
-// `/mcp/x/gists` などほかのツールセットを通すと、確かめていないツールが使えてしまう。
-const UPSTREAM_PATH_RE = /^\/mcp(\/readonly)?\/?$/;
+// 転送してよいパス。既定のツールセット（`/mcp`）、ツールセットを 1 つ選ぶ `/mcp/x/<ツールセット>`
+// （`all` を含む）と、それぞれの読み取り専用版。repo の範囲は checkCall が引数で確かめるので、ツールセットによらない。
+// 何ができるかは App の権限で決まる。`/insiders` は試験中のツールが出るので通さない。
+const UPSTREAM_PATH_RE = /^\/mcp(\/x\/[a-z_]+)?(\/readonly)?\/?$/;
 
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
@@ -21,8 +22,9 @@ const OWNER_SCOPED_TOOL_RE = /project/;
 // 名前で使わせない（create_repository は新しい repo を作り、get_teams・get_team_members は org を読む）。
 const OUT_OF_REPO_TOOLS = new Set(['create_repository', 'get_teams', 'get_team_members']);
 // owner/repo とは別に対象のアカウントや org を決める引数。中継は確かめられないので、付いていたら使わせない
-// （fork_repository の organization で、許した repo を別の org に fork させない、など）。
-const TARGET_ARGS = new Set(['organization', 'org', 'user', 'username', 'gist_id', 'notificationID']);
+// （fork_repository の organization で、許した repo を別の org に fork させない、governance のツールの
+// enterprise で、enterprise 全体のルールに届かせない、など）。
+const TARGET_ARGS = new Set(['organization', 'org', 'enterprise', 'user', 'username', 'gist_id', 'notificationID']);
 // 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
 // owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
 const ALLOWED_METHODS = new Set(['initialize', 'ping', 'tools/list', 'tools/call']);
