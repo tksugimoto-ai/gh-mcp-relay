@@ -101,8 +101,8 @@ test('createKey: 不正な入力を拒否する', async () => {
 test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確かめる', () => {
   assert.deepEqual(reposInArgs({ owner: 'A', repo: 'B', parent_owner: 'c', parent_repo: 'd', title: 'x' }), ['a/b', 'c/d']);
   const allowed = ['tksugimoto/a'];
-  assert.equal(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
-  assert.match(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'b' } }, allowed), /tksugimoto\/b/);
+  assert.equal(checkCall({ tool: 'issue_write', args: { method: 'create', owner: 'tksugimoto', repo: 'a' } }, allowed), null);
+  assert.match(checkCall({ tool: 'issue_write', args: { method: 'create', owner: 'tksugimoto', repo: 'b' } }, allowed), /tksugimoto\/b/);
   assert.ok(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'a', parent_owner: 'x', parent_repo: 'y' } }, allowed));
   assert.ok(checkCall({ tool: 'search_issues', args: { query: 'repo:x/y' } }, allowed));
   assert.ok(checkCall({ tool: 'search_issues', args: { owner: 'tksugimoto', repo: 'a', query: 'x' } }, allowed));
@@ -110,22 +110,29 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   // owner/repo 以外で対象を決める引数や、repo の外に効くツールは、使わない owner/repo を足しても通さない。
   assert.match(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a', organization: 'other' } }, allowed), /organization/);
   assert.equal(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
-  assert.match(checkCall({ tool: 'issue_read', args: { owner: 'tksugimoto', repo: 'a', enterprise: 'e' } }, allowed), /enterprise/);
-  // repo を含まない ID で対象を決める引数は、ほかの repo のものを指せるので通さない。使わない操作はそのまま通る。
-  const idArgs = [
-    ['pull_request_review_write', { method: 'resolve_thread', threadId: 'PRRT_x' }, /threadId/],
-    ['discussion_comment_write', { method: 'update', commentNodeID: 'DC_x', body: 'b' }, /commentNodeID/],
+  assert.match(checkCall({ tool: 'issue_read', args: { method: 'get', owner: 'tksugimoto', repo: 'a', enterprise: 'e' } }, allowed), /enterprise/);
+  // method で動きを変えるツールは、一覧の method だけ通す。repo を含まない ID だけで対象を決める method や、
+  // 上流が足した method、method の無い呼び出しは断る。
+  const deniedMethods = [
+    ['pull_request_review_write', { method: 'resolve_thread', threadId: 'PRRT_x' }],
+    ['discussion_comment_write', { method: 'update', commentNodeID: 'DC_x', body: 'b' }],
+    ['discussion_comment_write', { method: 'delete', commentNodeID: 'DC_x' }],
+    ['sub_issue_write', { method: 'add', issue_number: 1, sub_issue_id: 2 }],
+    ['issue_write', { method: 'a_new_upstream_method' }],
+    ['issue_write', {}],
   ];
-  for (const [tool, args, reason] of idArgs) {
-    assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), reason, tool);
+  for (const [tool, args] of deniedMethods) {
+    assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), /method/, `${tool} ${args.method}`);
   }
-  assert.equal(checkCall({ tool: 'pull_request_review_write', args: { owner: 'tksugimoto', repo: 'a', method: 'create', pullNumber: 1 } }, allowed), null);
-  // Discussion のコメントへの返信は、上流がコメントの repo を確かめるので通す。
-  assert.equal(checkCall({ tool: 'discussion_comment_write', args: { owner: 'tksugimoto', repo: 'a', method: 'reply', discussionNumber: 1, commentNodeID: 'DC_x', body: 'b' } }, allowed), null);
-  assert.match(checkCall({ tool: 'discussion_comment_write', args: { owner: 'tksugimoto', repo: 'a', method: 'delete', commentNodeID: 'DC_x' } }, allowed), /commentNodeID/);
-  // sub-issue の ID は、別の repo の Issue を指せる穴が残るが、使えるほうを選んで通す。
-  assert.equal(checkCall({ tool: 'sub_issue_write', args: { owner: 'tksugimoto', repo: 'a', method: 'add', issue_number: 1, sub_issue_id: 2 } }, allowed), null);
-  assert.equal(checkCall({ tool: 'sub_issue_write', args: { owner: 'tksugimoto', repo: 'a', method: 'reprioritize', issue_number: 1, sub_issue_id: 2, after_id: 3 } }, allowed), null);
+  const allowedMethods = [
+    ['pull_request_review_write', { method: 'create', pullNumber: 1 }],
+    ['discussion_comment_write', { method: 'reply', discussionNumber: 1, commentNodeID: 'DC_x', body: 'b' }],
+    ['sub_issue_write', { method: 'remove', issue_number: 1, sub_issue_id: 2 }],
+    ['sub_issue_write', { method: 'reprioritize', issue_number: 1, sub_issue_id: 2, after_id: 3 }],
+  ];
+  for (const [tool, args] of allowedMethods) {
+    assert.equal(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), null, `${tool} ${args.method}`);
+  }
   // actions のツールも owner/repo で確かめる。
   assert.equal(checkCall({ tool: 'actions_list', args: { owner: 'tksugimoto', repo: 'a', method: 'list_workflow_runs' } }, allowed), null);
   assert.ok(checkCall({ tool: 'get_job_logs', args: { owner: 'tksugimoto', repo: 'b', run_id: 1 } }, allowed));

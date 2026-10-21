@@ -83,26 +83,32 @@ const REPO_TOOLS = new Set([
 ]);
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
+// method で動きを変えるツールの、使ってよい method。一覧に無い method（上流が足したものを含む）や、method の無い
+// 呼び出しは使わせない。次の method は、repo を含まない ID だけで対象を決め、owner/repo を使わないので、owner/repo を
+// 許した repo にしたまま別の repo のものを指せる。一覧に入れない。
+// - pull_request_review_write の resolve_thread・unresolve_thread（threadId）
+// - discussion_comment_write の update・delete・mark_answer・unmark_answer（commentNodeID）。reply は、上流が
+//   コメントが owner/repo の Discussion のものかを確かめる（GitHub の API も、その Discussion に無い返信先は無視して
+//   トップレベルのコメントにする）ので入れる
+// - sub_issue_write の add（sub_issue_id）。GitHub は別の repo の Issue を sub-issue にできるので、別の repo の Issue を
+//   子にして get_sub_issues で中身を読んだり、replace_parent で親を付け替えたりできる。remove・reprioritize は、許した
+//   Issue の子の中でしか効かないので入れる
+const TOOL_METHODS = new Map([
+  ['issue_read', ['get', 'get_comments', 'get_sub_issues', 'get_parent', 'get_labels']],
+  ['issue_write', ['create', 'update']],
+  ['label_write', ['create', 'update', 'delete']],
+  ['sub_issue_write', ['remove', 'reprioritize']],
+  ['pull_request_read', ['get', 'get_diff', 'get_status', 'get_files', 'get_commits', 'get_review_comments', 'get_reviews', 'get_comments', 'get_check_runs']],
+  ['pull_request_review_write', ['create', 'submit_pending', 'delete_pending']],
+  ['actions_get', ['get_workflow', 'get_workflow_run', 'get_workflow_job', 'download_workflow_run_artifact', 'get_workflow_run_usage', 'get_workflow_run_logs_url']],
+  ['actions_list', ['list_workflows', 'list_workflow_runs', 'list_workflow_jobs', 'list_workflow_run_artifacts']],
+  ['actions_run_trigger', ['run_workflow', 'rerun_workflow_run', 'rerun_failed_jobs', 'cancel_workflow_run', 'delete_workflow_run_logs']],
+  ['discussion_comment_write', ['add', 'reply']],
+].map(([tool, methods]) => [tool, new Set(methods)]));
 // owner/repo とは別に対象のアカウントや org を決める引数。中継は確かめられないので、付いていたら使わせない
 // （fork_repository の organization で、許した repo を別の org に fork させない、など）。REPO_TOOLS のツールに
-// こうした引数が足されたときの備えも兼ねる。repo を含まない ID（GraphQL の node ID や Issue の ID）で対象を
-// 決める引数も、owner/repo を許した repo にしたまま別の repo のものを指せるので使わせない（pull_request_review_write の
-// resolve_thread の threadId、discussion_comment_write の commentNodeID）。ただし discussion_comment_write の reply は、
-// 上流がコメントが owner/repo の Discussion のものかを確かめるので通す（REPO_SCOPED_ID_CALLS）。sub_issue_write の sub_issue_id・after_id・
-// before_id は、別の repo の Issue を指せる穴が今の /mcp と同じく残るが、sub-issue を使えるほうを選んで通す。
-const TARGET_ARGS = new Set([
-  'organization',
-  'org',
-  'enterprise',
-  'user',
-  'username',
-  'gist_id',
-  'notificationID',
-  'threadId',
-  'commentNodeID',
-]);
-// 上流が ID を owner/repo の中のものか確かめるので、TARGET_ARGS の ID を通してよい呼び出し（ツール名:method → 引数）。
-const REPO_SCOPED_ID_CALLS = new Map([['discussion_comment_write:reply', 'commentNodeID']]);
+// こうした引数が足されたときの備えも兼ねる。
+const TARGET_ARGS = new Set(['organization', 'org', 'enterprise', 'user', 'username', 'gist_id', 'notificationID']);
 // 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
 // owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
 const ALLOWED_METHODS = new Set(['initialize', 'ping', 'tools/list', 'tools/call']);
@@ -205,8 +211,9 @@ export function isAllowedTool(name) {
 // tools/call を key の範囲で許すか。許さないときは理由を返す。
 export function checkCall(call, allowedRepos) {
   if (!isAllowedTool(call.tool)) return `${call.tool} は中継で使えません`;
-  const checkedId = REPO_SCOPED_ID_CALLS.get(`${call.tool}:${call.args?.method}`);
-  const targetArg = Object.keys(call.args ?? {}).find((name) => TARGET_ARGS.has(name) && name !== checkedId);
+  const methods = TOOL_METHODS.get(call.tool);
+  if (methods && !methods.has(call.args?.method)) return `${call.tool} の method ${call.args?.method} は中継で使えません`;
+  const targetArg = Object.keys(call.args ?? {}).find((name) => TARGET_ARGS.has(name));
   if (targetArg) return `引数 ${targetArg} は使えません`;
   const repos = reposInArgs(call.args);
   if (repos.length === 0) {
