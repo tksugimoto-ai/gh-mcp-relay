@@ -222,6 +222,7 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 | コラボレーターでない人 | 読む・Issue・fork から PR | 見えない | 読む・Issue・fork から PR | 見えない |
 | コラボレーターの role | 必ず Write（Read にはできない） | 必ず Write（Read にはできない） | Read〜Admin を選べる | Read〜Admin を選べる |
 | PR の出し方（Write のとき） | ブランチを push、または fork から | 同左（private の fork は、コラボレーターから外れると消える） | 同左 | ブランチを push。fork は org の設定次第（既定は禁止） |
+| PR の出し方（Read・Triage のとき） | ―（コラボレーターは必ず Write。コラボレーターでなければ fork から） | ―（必ず Write） | fork から（repo にはブランチを push できない） | fork が許されていれば fork から。許されていなければ出せない（既定は禁止） |
 | 保護ブランチ（持ち主が Free のプラン） | 使える | 使えない（`main` への push もマージも止まらない） | 使える | 使えない |
 | org の OAuth App の制限（既定で有効） | 無い | 無い | 承認されていない OAuth App は読むだけ | 承認されていない OAuth App は届かない |
 | GitHub App を入れられる人 | 持ち主 | 持ち主 | org の owner、repo の admin | org の owner、repo の admin |
