@@ -12,9 +12,10 @@ const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
 const UPSTREAM_PATH_RE = /^\/mcp(\/readonly)?\/?$/;
 
 // 使ってよいツール。owner と repo を取り、上流の API も repo のパスになる（key の repo の中に閉じる）と
-// 確かめたものだけ（list_issue_types などは repo を省けるが、中継は repo を付けたときだけ通す）。一覧に無いツールは、引数によらず使わせず、tools/list からも外す。owner/repo を取らない
-// ツールは、使わない owner/repo を足されると引数の確認を通ってしまうので、一覧に入れない（search_*、
-// Projects、create_repository、get_teams、gists、notifications、stargazers など）。上流がツールを足しても、
+// 確かめたものだけ（list_issue_types などは repo を省けるが、中継は repo を付けたときだけ通す）。
+// 一覧に無いツールは、引数によらず使わせず、tools/list からも外す。owner/repo を取らないツールは、
+// 使わない owner/repo を足されると引数の確認を通ってしまうので、一覧に入れない（search_*、Projects、
+// create_repository、get_teams、gists、notifications、stargazers など）。上流がツールを足しても、
 // ここに足すまでは使えない。
 const REPO_TOOLS = new Set([
   // repos・git（fork_repository は本人のアカウントに fork を作るが、作った fork には key が無いので触れない）
