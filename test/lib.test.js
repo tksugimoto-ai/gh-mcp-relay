@@ -115,13 +115,14 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   const idArgs = [
     ['pull_request_review_write', { method: 'resolve_thread', threadId: 'PRRT_x' }, /threadId/],
     ['discussion_comment_write', { method: 'update', commentNodeID: 'DC_x', body: 'b' }, /commentNodeID/],
-    ['sub_issue_write', { method: 'add', issue_number: 1, sub_issue_id: 2 }, /sub_issue_id/],
-    ['sub_issue_write', { method: 'reprioritize', issue_number: 1, sub_issue_id: 2, after_id: 3 }, /_id/],
   ];
   for (const [tool, args, reason] of idArgs) {
     assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), reason, tool);
   }
   assert.equal(checkCall({ tool: 'pull_request_review_write', args: { owner: 'tksugimoto', repo: 'a', method: 'create', pullNumber: 1 } }, allowed), null);
+  // sub-issue の ID は、別の repo の Issue を指せる穴が残るが、使えるほうを選んで通す。
+  assert.equal(checkCall({ tool: 'sub_issue_write', args: { owner: 'tksugimoto', repo: 'a', method: 'add', issue_number: 1, sub_issue_id: 2 } }, allowed), null);
+  assert.equal(checkCall({ tool: 'sub_issue_write', args: { owner: 'tksugimoto', repo: 'a', method: 'reprioritize', issue_number: 1, sub_issue_id: 2, after_id: 3 } }, allowed), null);
   // actions のツールも owner/repo で確かめる。
   assert.equal(checkCall({ tool: 'actions_list', args: { owner: 'tksugimoto', repo: 'a', method: 'list_workflow_runs' } }, allowed), null);
   assert.ok(checkCall({ tool: 'get_job_logs', args: { owner: 'tksugimoto', repo: 'b', run_id: 1 } }, allowed));

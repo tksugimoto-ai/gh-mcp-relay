@@ -87,7 +87,8 @@ const REPOLESS_TOOLS = new Set(['get_me']);
 // （fork_repository の organization で、許した repo を別の org に fork させない、など）。REPO_TOOLS のツールに
 // こうした引数が足されたときの備えも兼ねる。repo を含まない ID（GraphQL の node ID や Issue の ID）で対象を
 // 決める引数も、owner/repo を許した repo にしたまま別の repo のものを指せるので使わせない（pull_request_review_write の
-// resolve_thread の threadId、discussion_comment_write の commentNodeID、sub_issue_write の sub_issue_id など）。
+// resolve_thread の threadId、discussion_comment_write の commentNodeID）。sub_issue_write の sub_issue_id・after_id・
+// before_id は、別の repo の Issue を指せる穴が今の /mcp と同じく残るが、sub-issue を使えるほうを選んで通す。
 const TARGET_ARGS = new Set([
   'organization',
   'org',
@@ -98,9 +99,6 @@ const TARGET_ARGS = new Set([
   'notificationID',
   'threadId',
   'commentNodeID',
-  'sub_issue_id',
-  'after_id',
-  'before_id',
 ]);
 // 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
 // owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
