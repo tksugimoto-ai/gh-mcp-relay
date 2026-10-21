@@ -67,7 +67,7 @@ const REPOLESS_TOOLS = new Set(['get_me']);
 // 呼び出しは使わせない。次の method は、repo を含まない ID だけで対象を決め、owner/repo を使わないので、owner/repo を
 // 許した repo にしたまま別の repo のものを指せる。一覧に入れない。
 // - pull_request_review_write の resolve_thread・unresolve_thread（threadId）
-// - sub_issue_write の add（sub_issue_id）。GitHub は別の repo の Issue を sub-issue にできるので、別の repo の Issue を
+// - sub_issue_write の add（sub_issue_id）。GitHub は同じ owner の別の repo の Issue を sub-issue にできるので、その Issue を
 //   子にして get_sub_issues で中身を読んだり、replace_parent で親を付け替えたりできる。remove・reprioritize は、許した
 //   Issue の子にしか効かないので入れる（人が別の repo の Issue を子にしてあれば、remove でその Issue の親が外れる）
 // ここに無いツールに method が付いていたら使わせない（上流が method を足したときの備え）。
