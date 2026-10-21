@@ -59,7 +59,7 @@ cloud 環境「pocket-ssh-agent」のセッション
 | key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>` |
 | key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
 
-コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）と `/mcp/readonly` だけを受け付けます。使えるツールは中継の一覧（`src/lib.js` の `REPO_TOOLS`）で決まり、一覧に入れたのは既定のツールセットのツールだけなので、`/mcp/x/<ツールセット>` などほかのパスは通しません。
+コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）、`/mcp/x/<ツールセット>`（`all` を含む）と、それぞれの `/readonly` 版を受け付けます（`/insiders` は通しません）。使えるツールは中継の一覧（`src/lib.js` の `REPO_TOOLS`）で決まり、ツールセットによりません。一覧に無いツールは Claude のツール一覧にも出ません。何ができるか（actions の再実行など）は App の権限で決まるので、使わせたくない操作は App の権限を付けないでおきます。
 
 key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形です。期限の日付になった時点（その日の 0 時 UTC、日本時間 9 時）から使えなくなります。中身は読めるので、どの repo 用の key か見ればわかります。署名は HMAC-SHA256 で、署名用の鍵（`KEY_SECRET`）を持つ人しか作れません。
 
@@ -77,7 +77,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - 通す JSON-RPC のメソッドは `initialize`・`ping`・`tools/list`・`tools/call`・`notifications/*` だけ。`resources/read`・`prompts/get`・`completion/complete` などは repo を引数ではなく URI などで渡し、確かめられないので拒否する。
 - `tools/call` では、`gh_mcp_relay_key` の署名と期限を確かめる。
 - 使ってよいツールの一覧（`owner`/`repo` を必ず取り、repo の中に閉じると確かめたもの）に無いツールは、引数によらず拒否し、`tools/list` からも外す。`search_*`、Projects、`create_repository` など、repo を取らないツールや repo の外に効くツールは一覧に入れない（上流は使わない引数を無視するので、`owner`/`repo` を足して確認を通り抜けられないように）。上流が足したツールは、一覧に足すまで使えない。
-- method で動きを変えるツールは、使ってよい method も一覧で持ち、一覧に無い method は拒否する。repo を含まない ID だけで対象を決める method（レビューのスレッドの解決、既存の Issue を sub-issue にすること）は一覧に入れない。
+- method で動きを変えるツールは、使ってよい method も一覧で持ち、一覧に無い method は拒否する。repo を含まない ID だけで対象を決める method（レビューのスレッドの解決、Discussion のコメントの編集・削除、既存の Issue を sub-issue にすること）は一覧に入れない。
 - 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるか確かめる。`organization`・`org`・`enterprise`・`user` など owner/repo とは別に対象を決める引数が付いた呼び出しも拒否する。
 - 拒否したときは転送せず、JSON-RPC のエラーを返す。
 - `tools/list` の結果には、各ツールに `gh_mcp_relay_key` 引数（必須）を足す。
@@ -156,11 +156,12 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 | | 上のコネクタ | 足すコネクタ |
 | --- | --- | --- |
 | OAuth のクライアント | GitHub App | OAuth App |
-| URL | `https://<中継>/mcp` | `https://<中継>/mcp/readonly` |
+| URL | `https://<中継>/mcp` など | `https://<中継>/mcp/readonly` など（`/readonly` で終わるパスだけ） |
 | 届く範囲を絞るもの | GitHub（App の install 先）と key | key だけ |
 | 書き込み | できる（App の権限の範囲で） | できない（公式 GitHub MCP の readonly で、書き込みのツールが出ない） |
 
 - 同じ URL のコネクタは 2 つ目を登録できないので、readonly のパスで URL を分けます。読み取り専用にすること自体も、この用途に合っています。
+- ほかのツールセットを読むときも、`/mcp/x/all/readonly` のように `/readonly` で終わるパスで登録します。OAuth App の token には App の権限による制限が無いので、`/readonly` で終わらないパスでは登録しません（中継も、`repo` の scope は `/readonly` で終わるパスでだけ求めます）。
 - 中継の確認（key の署名、使ってよいツールの一覧、引数の `owner`/`repo`）は、そのまま効きます。
 - OAuth App の token は、認可のときに求めた scope しか持ちません。private の repo を読むには `repo` の scope が要るので、中継は readonly のパスでだけ、メタデータの `scopes_supported` と 401 の `WWW-Authenticate` で `repo` を伝えます。
 

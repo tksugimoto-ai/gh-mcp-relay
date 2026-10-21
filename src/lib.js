@@ -8,8 +8,10 @@ const KEY_PREFIX = 'gh-mcp-relay';
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const EXPIRES_RE = /^\d{4}-\d{2}-\d{2}$/;
 const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
-// 転送してよいパス。既定のツールセット（`/mcp`）とその読み取り専用版だけ。
-const UPSTREAM_PATH_RE = /^\/mcp(\/readonly)?\/?$/;
+// 転送してよいパス。既定のツールセット（`/mcp`）、ツールセットを 1 つ選ぶ `/mcp/x/<ツールセット>`（`all` を含む）と、
+// それぞれの読み取り専用版。どのツールを使えるかは REPO_TOOLS で決めるので、ツールセットは選ばない。
+// `readonly`・`insiders` はツールセット名にしない（`/insiders` は試験中のツールが出るので通さない）。
+const UPSTREAM_PATH_RE = /^\/mcp(?:\/x\/(?!(?:readonly|insiders)(?:\/|$))[a-z_]+)?(\/readonly)?\/?$/;
 
 // 使ってよいツール。owner と repo を取り、上流の API も repo のパスになる（key の repo の中に閉じる）と
 // 確かめたものだけ（list_issue_types などは repo を省けるが、中継は repo を付けたときだけ通す）。
@@ -58,8 +60,28 @@ const REPO_TOOLS = new Set([
   'request_copilot_review',
   'update_pull_request',
   'update_pull_request_branch',
-  // secret_protection（渡した内容を、その repo の設定で調べる）
+  // actions
+  'actions_get',
+  'actions_list',
+  'actions_run_trigger',
+  'get_job_logs',
+  // code_quality・code_security・dependabot・secret_protection・security_advisories
+  // （run_secret_scanning は、渡した内容をその repo の設定で調べる）
+  'get_code_quality_finding',
+  'get_code_scanning_alert',
+  'get_dependabot_alert',
+  'get_secret_scanning_alert',
+  'list_code_scanning_alerts',
+  'list_dependabot_alerts',
+  'list_repository_security_advisories',
+  'list_secret_scanning_alerts',
   'run_secret_scanning',
+  // discussions
+  'discussion_comment_write',
+  'get_discussion',
+  'get_discussion_comments',
+  'list_discussion_categories',
+  'list_discussions',
 ]);
 // owner/repo を取らないが、どの repo にも届かないので許すツール。
 const REPOLESS_TOOLS = new Set(['get_me']);
@@ -67,6 +89,9 @@ const REPOLESS_TOOLS = new Set(['get_me']);
 // 呼び出しは使わせない。次の method は、repo を含まない ID だけで対象を決め、owner/repo を使わないので、owner/repo を
 // 許した repo にしたまま別の repo のものを指せる。一覧に入れない。
 // - pull_request_review_write の resolve_thread・unresolve_thread（threadId）
+// - discussion_comment_write の update・delete・mark_answer・unmark_answer（commentNodeID）。reply は、上流が
+//   コメントが owner/repo の Discussion のものかを確かめる（GitHub の API も、その Discussion に無い返信先は無視して
+//   トップレベルのコメントにする）ので入れる
 // - sub_issue_write の add（sub_issue_id）。GitHub は同じ owner の別の repo の Issue を sub-issue にできるので、その Issue を
 //   子にして get_sub_issues で中身を読んだり、replace_parent で親を付け替えたりできる。remove・reprioritize は、許した
 //   Issue の子にしか効かないので入れる（人が別の repo の Issue を子にしてあれば、remove でその Issue の親が外れる）
@@ -78,6 +103,10 @@ export const TOOL_METHODS = new Map([
   ['sub_issue_write', ['remove', 'reprioritize']],
   ['pull_request_read', ['get', 'get_diff', 'get_status', 'get_files', 'get_commits', 'get_review_comments', 'get_reviews', 'get_comments', 'get_check_runs']],
   ['pull_request_review_write', ['create', 'submit_pending', 'delete_pending']],
+  ['actions_get', ['get_workflow', 'get_workflow_run', 'get_workflow_job', 'download_workflow_run_artifact', 'get_workflow_run_usage', 'get_workflow_run_logs_url']],
+  ['actions_list', ['list_workflows', 'list_workflow_runs', 'list_workflow_jobs', 'list_workflow_run_artifacts']],
+  ['actions_run_trigger', ['run_workflow', 'rerun_workflow_run', 'rerun_failed_jobs', 'cancel_workflow_run', 'delete_workflow_run_logs']],
+  ['discussion_comment_write', ['add', 'reply']],
 ].map(([tool, methods]) => [tool, new Set(methods)]));
 // owner/repo とは別に対象のアカウントや org を決める引数。中継は確かめられないので、付いていたら使わせない
 // （fork_repository の organization で、許した repo を別の org に fork させない、など）。REPO_TOOLS のツールに
@@ -103,7 +132,7 @@ export function matchRoute(pathname) {
 // private の repo を読むには repo が要る。OAuth App のコネクタは readonly のパスで登録する
 // （同じ URL のコネクタは 2 つ登録できない）ので、readonly のパスでだけ返す。GitHub App は scope を見ない。
 export function oauthScope(path) {
-  return path.split('/').includes('readonly') ? 'repo' : null;
+  return /\/readonly\/?$/.test(path) ? 'repo' : null;
 }
 
 export function resourceMetadata(origin, path) {
