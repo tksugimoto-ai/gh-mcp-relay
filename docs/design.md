@@ -108,12 +108,12 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - 通す JSON-RPC のメソッドは、`initialize`・`ping`・`tools/list`・`tools/call`・`notifications/*` だけにする。公式 GitHub MCP は repo の中身をリソース（`repo://{owner}/{repo}/contents{/path*}` など）としても出していて、`resources/read` などは repo を URI で渡すので、引数の `owner`/`repo` では確かめられないため。
 - 使ってよいツールを一覧（`REPO_TOOLS`）で持ち、一覧に無いツールは引数によらず拒否し、`tools/list` からも外す。一覧に入れるのは、`owner` と `repo` を必ず取り、上流の API も repo のパスになる（key の repo の中に閉じる）と確かめたツールだけ。上流は使わない引数を無視するので、`owner`/`repo` を取らないツールに使わない `owner`/`repo` を足されると、引数の確認を通ってしまう（Projects、`create_repository` など）。名前で拒否する方式では、上流がそうしたツールを足すたびに穴になるので、通すものを並べる方式にする。上流が足したツールは、一覧に足すまで使えない（method は下の項目）。
 - 一覧に入れないもの: `search_*`（クエリでほかの repo にも届きうる）、Projects、`create_repository`・`get_teams`・`get_team_members`。
-- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。
+- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。`owner` だけで `repo` が無い呼び出しは拒否する。
 - owner/repo とは別に対象のアカウントや org を決める引数（`organization`、`org`、`enterprise`、`user`、`username`、`gist_id`、`notificationID`）が付いた呼び出しは拒否する。たとえば `fork_repository` の `organization` で、許した repo を別の org に fork させない。一覧のツールにこうした引数が別の名前で足されると通ってしまう。
-- method で動きを変えるツール（`issue_write`・`pull_request_review_write` など）は、使ってよい method も一覧（`TOOL_METHODS`）で持ち、一覧に無い method や method の無い呼び出しは拒否する。上流が method を足しても、一覧に足すまで使えない。
+- method で動きを変えるツール（`issue_write`・`pull_request_review_write` など）は、使ってよい method も一覧（`TOOL_METHODS`）で持ち、一覧に無い method や method の無い呼び出しは拒否する。上流が method を足しても、一覧に足すまで使えない。一覧に無いツールに method が付いた呼び出しも拒否する（上流がそのツールに method を足したときの備え）。
 - repo を含まない ID だけで対象を決め、owner/repo を使わない method は一覧に入れない。owner/repo を許した repo にしたまま、ID で別の repo のものを指せるため（github-mcp-server のソースで確かめた）。
   - `pull_request_review_write` の `resolve_thread`・`unresolve_thread`（GraphQL の node ID の `threadId`）
-  - `sub_issue_write` の `add`（Issue の数値の ID の `sub_issue_id`）。GitHub は別の repo の Issue を sub-issue にできるので、別の repo の Issue を子にして `issue_read` の `get_sub_issues` でタイトルや本文を読んだり、`replace_parent` で親を付け替えたりできる。`remove`・`reprioritize` は許した Issue の子の中でしか効かないので入れる。新しい Issue を sub-issue として作るのは、`issue_write` の `create` の `parent_issue_number` でできる（親の repo も key で確かめる）
+  - `sub_issue_write` の `add`（Issue の数値の ID の `sub_issue_id`）。GitHub は別の repo の Issue を sub-issue にできるので、別の repo の Issue を子にして `issue_read` の `get_sub_issues` でタイトルや本文を読んだり、`replace_parent` で親を付け替えたりできる。`remove`・`reprioritize` は許した Issue の子にしか効かないので入れる（人が別の repo の Issue を子にしてあれば、`remove` でその Issue の親が外れる）。新しい Issue を sub-issue として作るのは、`issue_write` の `create` の `parent_issue_number` でできる（親の repo も key で確かめる）
 - このため、中継経由ではレビューのスレッドの解決・未解決と、既存の Issue を sub-issue にすることはできない。
 - 人が GitHub の画面で別の repo の Issue を sub-issue にしてあると、`issue_read` の `get_sub_issues`・`get_parent` でその Issue の中身が読める。中継は返事の中身を見ないので、これは防げない。
 - `fork_repository` は本人のアカウントに fork を作るので、厳密には key の repo の中に閉じない。作った fork には key が無いので、それ以上は触れない。fork から PR を出す使い方のために残す。

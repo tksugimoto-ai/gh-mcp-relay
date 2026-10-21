@@ -7,10 +7,12 @@ import {
   createKey,
   deniedMethod,
   injectKeyParam,
+  isAllowedTool,
   matchRoute,
   reposInArgs,
   resourceMetadata,
   stripKey,
+  TOOL_METHODS,
   verifyKey,
 } from '../src/lib.js';
 
@@ -99,6 +101,7 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
     ['sub_issue_write', { method: 'add', issue_number: 1, sub_issue_id: 2 }],
     ['issue_write', { method: 'a_new_upstream_method' }],
     ['issue_write', {}],
+    ['list_issues', { method: 'a_new_upstream_method' }],
   ];
   for (const [tool, args] of deniedMethods) {
     assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), /method/, `${tool} ${args.method}`);
@@ -111,6 +114,12 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   for (const [tool, args] of allowedMethods) {
     assert.equal(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), null, `${tool} ${args.method}`);
   }
+  // owner だけで repo の無い呼び出しは断る（list_issue_types などは repo を省ける）。
+  assert.match(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto' } }, allowed), /owner には repo も要ります/);
+  assert.equal(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
+  assert.equal(checkCall({ tool: 'run_secret_scanning', args: { owner: 'tksugimoto', repo: 'a', files: 'x' } }, allowed), null);
+  // TOOL_METHODS のツールは、すべて使ってよいツールの一覧にある。
+  for (const tool of TOOL_METHODS.keys()) assert.ok(isAllowedTool(tool), tool);
   // 一覧に無いツールは、使わない owner/repo を足しても通さない（上流は使わない引数を無視するため）。
   for (const tool of [
     'create_gist',
