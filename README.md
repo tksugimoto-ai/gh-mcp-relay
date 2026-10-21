@@ -232,14 +232,15 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 
 ### この中継で使う場合
 
-| ケース | 必要なもの | 今の中継でできること | Claude に渡す権限（漏れたときに使われうる範囲） |
-| --- | --- | --- | --- |
-| App を入れてもらえる（どの種類でも） | 持ち主（org なら owner か repo の admin）に App を install してもらう。fork から PR を出すなら fork にも入れる。key | 読む、Issue・コメント、PR の作成・レビュー（App の権限の範囲） | GitHub App の user token。App の権限（Issues・Pull requests の読み書き、Contents・Metadata の読み取り）、install 先、`tksugimoto-ai` の role の重なる部分だけ。既定で 8 時間で切れる |
-| 個人 public、App 無し | OAuth App のコネクタ（`/readonly` で終わるパス）。key | 読むだけ（GitHub 上はコラボレーターでなくても Issue や PR を出せるが、中継が readonly） | OAuth App の token（`repo` の scope）。`tksugimoto-ai` が触れる全部の repo に、その権限のとおり読み書きできる。期限は無い |
-| 個人 private、App 無し | 持ち主にコラボレーターとして招いてもらう（必ず Write）。OAuth App のコネクタ。key | 読むだけ | 同上。この repo には Write なので、マージや（保護ブランチが無ければ）`main` への push もできる |
-| org public、App 無し | OAuth App のコネクタ。key | 読むだけ | 同上。制限が有効で承認されていない org の repo には、この token では書けない（読むことはできる） |
-| org private、App 無し | role を付けてもらう。org の owner の OAuth App の承認。OAuth App のコネクタ。key | 読むだけ | 同上。承認された org では、見える repo 全部に `tksugimoto-ai` の role のとおり届く |
+| ケース | 使うコネクタ | 持ち主に頼むこと | 今の中継でできること | Claude に渡す権限（漏れたときに使われうる範囲） |
+| --- | --- | --- | --- | --- |
+| App を入れてもらえる（どの種類でも） | GitHub App のコネクタ（`/mcp` など） | App の install（org なら owner か repo の admin）。fork から PR を出すなら fork にも自分で入れる | 読む、Issue・コメント、PR の作成・レビュー（App の権限の範囲） | GitHub App の user token。App の権限（Issues・Pull requests の読み書き、Contents・Metadata の読み取り）、install 先、`tksugimoto-ai` の role の重なる部分だけ。既定で 8 時間で切れる |
+| 個人 public、App 無し | OAuth App のコネクタ（`/readonly` で終わるパス） | なし | 読むだけ（GitHub 上はコラボレーターでなくても Issue や PR を出せるが、中継が readonly） | OAuth App の token（`repo` の scope）。`tksugimoto-ai` が触れる全部の repo に、その権限のとおり読み書きできる。期限は無い |
+| 個人 private、App 無し | OAuth App のコネクタ（同上） | コラボレーターへの招待（必ず Write になる） | 読むだけ | 同上。この repo には Write なので、マージや（保護ブランチが無ければ）`main` への push もできる |
+| org public、App 無し | OAuth App のコネクタ（同上） | なし | 読むだけ | 同上。制限が有効で承認されていない org の repo には、この token では書けない（読むことはできる） |
+| org private、App 無し | OAuth App のコネクタ（同上） | role を付けること。org の OAuth App の制限が有効なら（既定で有効）OAuth App の承認 | 読むだけ | 同上。承認された org では、見える repo 全部に `tksugimoto-ai` の role のとおり届く |
 
+- どのケースでも、その repo 用の key が要る。
 - OAuth App のコネクタは、どのケースのために足しても token は同じで、漏れたときの範囲は `tksugimoto-ai` の権限の全体になる。ケースごとに違うのは、その repo での `tksugimoto-ai` の role だけ。守りは `tksugimoto-ai` の権限を小さく保つこと（読むだけの org の repo は Read にしてもらう、要らない招待は外してもらう）。
 - OAuth App の token には `workflow` の scope が無いので、`.github/workflows/` のファイルの追加や変更はできない。
 - cloud でコードを clone して push するときは、別に Claude GitHub App を `tksugimoto-ai` の repo（fork）に入れる。この App が触れるのは、入れた repo だけ。
