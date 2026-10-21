@@ -211,6 +211,42 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 - 防げること: 1つのセッションから、key で許していない repo を操作すること（repo をまたぐ prompt injection を含む）。
 - 防げないこと: 許した repo の中での悪用。OAuth App のコネクタでは、GitHub 側の範囲の制限が無いので、key だけが境界になる。また、key はセッションから読めるので、ほかのセッションに書き写されるとその repo を使われます。認証情報ではなく「利用許可の合言葉」として扱い、期限で守ります。
 
+## repo の種類ごとの違い
+
+どのコネクタを使うか、何を頼む必要があるか、Claude に何を渡すことになるかは、repo の持ち主（個人か org か）と公開範囲で変わります。GitHub 側の仕様は公式ドキュメント（[個人の repo の権限](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/repository-access-and-collaboration/permission-levels-for-a-personal-account-repository)、[org の repo の role](https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization)、[OAuth App の制限](https://docs.github.com/en/organizations/managing-oauth-access-to-your-organizations-data/about-oauth-app-access-restrictions)）で確かめたものです。
+
+### GitHub 側の違い
+
+| | 個人 public | 個人 private | org public | org private |
+| --- | --- | --- | --- | --- |
+| コラボレーターでない人 | 読む・Issue・fork から PR | 見えない | 読む・Issue・fork から PR | 見えない |
+| コラボレーターの role | 必ず Write（Read にはできない） | 必ず Write（Read にはできない） | Read〜Admin を選べる | Read〜Admin を選べる |
+| PR の出し方（Write のとき） | ブランチを push、または fork から | 同左（private の fork は、コラボレーターから外れると消える） | 同左 | ブランチを push。fork は org の設定次第（既定は禁止） |
+| PR の出し方（Read・Triage のとき） | ―（コラボレーターは必ず Write。コラボレーターでなければ fork から） | ―（必ず Write） | fork から（repo にはブランチを push できない） | fork が許されていれば fork から。許されていなければ出せない（既定は禁止） |
+| 保護ブランチ（持ち主が Free のプラン） | 使える | 使えない（`main` への push もマージも止まらない） | 使える | 使えない |
+| org の OAuth App の制限（既定で有効） | 無い | 無い | 承認されていない OAuth App は読むだけ | 承認されていない OAuth App は届かない |
+| GitHub App を入れられる人 | 持ち主 | 持ち主 | org の owner、repo の admin | org の owner、repo の admin |
+
+- org の OAuth App の承認は org 全体に効き、repo ごとには承認できない。
+- org の Read の role でも、Issue の作成、コメント、レビューのコメントはできる。
+
+### この中継で使う場合
+
+| ケース | 使うコネクタ | 持ち主に頼むこと | 今の中継でできること | Claude に渡す権限（漏れたときに使われうる範囲） |
+| --- | --- | --- | --- | --- |
+| App を入れてもらえる（どの種類でも） | GitHub App のコネクタ（`/mcp` など） | App の install（org なら owner か repo の admin）。fork から PR を出すなら fork にも自分で入れる | 読む、Issue・コメント、PR の作成・レビュー（App の権限の範囲） | GitHub App の user token。App の権限（Issues・Pull requests の読み書き、Contents・Metadata の読み取り）、install 先、`tksugimoto-ai` の role の重なる部分だけ。既定で 8 時間で切れる |
+| 個人 public、App 無し | OAuth App のコネクタ（`/readonly` で終わるパス） | なし | 読むだけ（GitHub 上はコラボレーターでなくても Issue や PR を出せるが、中継が readonly） | OAuth App の token（`repo` の scope）。`tksugimoto-ai` が触れる全部の repo に、その権限のとおり読み書きできる。期限は無い |
+| 個人 private、App 無し | OAuth App のコネクタ（同上） | コラボレーターへの招待（必ず Write になる） | 読むだけ | 同上。この repo には Write なので、マージや（保護ブランチが無ければ）`main` への push もできる |
+| org public、App 無し | OAuth App のコネクタ（同上） | なし | 読むだけ | 同上。制限が有効で承認されていない org の repo には、この token では書けない（読むことはできる） |
+| org private、App 無し | OAuth App のコネクタ（同上） | role を付けること。org の OAuth App の制限が有効なら（既定で有効）OAuth App の承認 | 読むだけ | 同上。承認された org では、見える repo 全部に `tksugimoto-ai` の role のとおり届く |
+
+- どのケースでも、その repo 用の key が要る。
+- OAuth App のコネクタは、どのケースのために足しても token は同じで、漏れたときの範囲は `tksugimoto-ai` の権限の全体になる。ケースごとに違うのは、その repo での `tksugimoto-ai` の role だけ。守りは `tksugimoto-ai` の権限を小さく保つこと（読むだけの org の repo は Read にしてもらう、要らない招待は外してもらう）。
+- OAuth App の token には `workflow` の scope が無いので、`.github/workflows/` のファイルの追加や変更はできない。
+- cloud でコードを clone して push するときは、別に Claude GitHub App を `tksugimoto-ai` の repo（fork）に入れる。この App が触れるのは、入れた repo だけ。
+- key は GitHub の認証情報ではない。漏れても、同じ claude.ai アカウントのコネクタを通さなければ使えない（上の「防げること・防げないこと」）。
+- App 無しで Issue や PR を作れるようにする案は #23・#24 で検討している。
+
 ## テスト
 
 ```bash
