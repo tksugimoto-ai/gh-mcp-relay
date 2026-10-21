@@ -38,7 +38,7 @@ const call = (body) =>
   });
 
 const toolCall = (args) => ({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'issue_write', arguments: args } });
-const repoArgs = { owner: 'tksugimoto', repo: 'pocket-ssh-agent' };
+const repoArgs = { method: 'create', owner: 'tksugimoto', repo: 'pocket-ssh-agent' };
 
 test('メタデータは token なしで返す', async () => {
   stubFetch();
@@ -91,7 +91,7 @@ test('key が違う tools/call は転送しない', async () => {
 
 test('key が許していない repo は転送しない', async () => {
   const forwarded = stubFetch();
-  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY, owner: 'tksugimoto', repo: 'other' })), env);
+  const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY, method: 'create', owner: 'tksugimoto', repo: 'other' })), env);
   assert.match((await res.json()).error.message, /tksugimoto\/other/);
   assert.equal(forwarded.length, 0);
 });
