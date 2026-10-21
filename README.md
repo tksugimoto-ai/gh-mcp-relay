@@ -59,7 +59,7 @@ cloud 環境「pocket-ssh-agent」のセッション
 | key（repo 1つ） | `gh-mcp-relay:tksugimoto/pocket-ssh-agent:<署名>` |
 | key（repo 2つ、期限つき） | `gh-mcp-relay:tksugimoto/app,tksugimoto/app-submodule:2027-04-01:<署名>` |
 
-コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）と `/mcp/readonly` だけを受け付けます。中継はツールや引数を名前で拒否していて、確かめたのは既定のツールセットのツールだけなので、`/mcp/x/<ツールセット>` などほかのパスは通しません。
+コネクタの URL は、公式 GitHub MCP の URL のホスト部分だけを中継のものに置き換えたものです。中継はパスをそのまま `api.githubcopilot.com` に渡します。転送先はこのホストに固定で、パスは `/mcp`（既定のツールセット）、`/mcp/x/<ツールセット>`（`all` を含む）と、それぞれの `/readonly` 版を受け付けます（`/insiders` は通しません）。使えるツールは中継の一覧（`src/lib.js` の `REPO_TOOLS`）で決まり、ツールセットによりません。一覧に無いツールは Claude のツール一覧にも出ません。何ができるか（actions の再実行など）は App の権限で決まるので、使わせたくない操作は App の権限を付けないでおきます。
 
 key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形です。期限の日付になった時点（その日の 0 時 UTC、日本時間 9 時）から使えなくなります。中身は読めるので、どの repo 用の key か見ればわかります。署名は HMAC-SHA256 で、署名用の鍵（`KEY_SECRET`）を持つ人しか作れません。
 
@@ -76,7 +76,9 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - Authorization ヘッダーが無ければ `401` を返し、`WWW-Authenticate` でメタデータ（`/.well-known/oauth-protected-resource/<パス>`、認可サーバーは GitHub）の場所を伝える。Claude はこれを見て、GitHub で OAuth を行う。token の中身は確かめない。
 - 通す JSON-RPC のメソッドは `initialize`・`ping`・`tools/list`・`tools/call`・`notifications/*` だけ。`resources/read`・`prompts/get`・`completion/complete` などは repo を引数ではなく URI などで渡し、確かめられないので拒否する。
 - `tools/call` では、`gh_mcp_relay_key` の署名と期限を確かめる。
-- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるか確かめる。`owner`/`repo` を取らないツールは、`get_me` を除いて拒否する。`search_*` は `owner`/`repo` を省略でき、クエリでほかの repo にも届きうるので、引数によらず拒否する。Projects のツールも、`owner` だけでアカウントや org 全体に効くので、引数によらず拒否する。`create_repository`・`get_teams`・`get_team_members` のように key の repo の外に効くツールと、`organization`・`org`・`user` など owner/repo とは別に対象を決める引数が付いた呼び出しも拒否する（使わない `owner`/`repo` を足して確認を通り抜けられないように）。
+- 使ってよいツールの一覧（`owner`/`repo` を必ず取り、repo の中に閉じると確かめたもの）に無いツールは、引数によらず拒否し、`tools/list` からも外す。`search_*`、Projects、`create_repository` など、repo を取らないツールや repo の外に効くツールは一覧に入れない（上流は使わない引数を無視するので、`owner`/`repo` を足して確認を通り抜けられないように）。上流が足したツールは、一覧に足すまで使えない。
+- method で動きを変えるツールは、使ってよい method も一覧で持ち、一覧に無い method は拒否する。repo を含まない ID だけで対象を決める method（レビューのスレッドの解決、Discussion のコメントの編集・削除、既存の Issue を sub-issue にすること）は一覧に入れない。
+- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるか確かめる。`organization`・`org`・`enterprise`・`user` など owner/repo とは別に対象を決める引数が付いた呼び出しも拒否する。
 - 拒否したときは転送せず、JSON-RPC のエラーを返す。
 - `tools/list` の結果には、各ツールに `gh_mcp_relay_key` 引数（必須）を足す。
 
@@ -154,12 +156,13 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 | | 上のコネクタ | 足すコネクタ |
 | --- | --- | --- |
 | OAuth のクライアント | GitHub App | OAuth App |
-| URL | `https://<中継>/mcp` | `https://<中継>/mcp/readonly` |
+| URL | `https://<中継>/mcp` など | `https://<中継>/mcp/readonly` など（`/readonly` で終わるパスだけ） |
 | 届く範囲を絞るもの | GitHub（App の install 先）と key | key だけ |
 | 書き込み | できる（App の権限の範囲で） | できない（公式 GitHub MCP の readonly で、書き込みのツールが出ない） |
 
 - 同じ URL のコネクタは 2 つ目を登録できないので、readonly のパスで URL を分けます。読み取り専用にすること自体も、この用途に合っています。
-- 中継の確認（key の署名、引数の `owner`/`repo`、`search_*` と Projects のツールの拒否）は、そのまま効きます。
+- ほかのツールセットを読むときも、`/mcp/x/all/readonly` のように `/readonly` で終わるパスで登録します。OAuth App の token には App の権限による制限が無いので、`/readonly` で終わらないパスでは登録しません（中継も、`repo` の scope は `/readonly` で終わるパスでだけ求めます）。
+- 中継の確認（key の署名、使ってよいツールの一覧、引数の `owner`/`repo`）は、そのまま効きます。
 - OAuth App の token は、認可のときに求めた scope しか持ちません。private の repo を読むには `repo` の scope が要るので、中継は readonly のパスでだけ、メタデータの `scopes_supported` と 401 の `WWW-Authenticate` で `repo` を伝えます。
 
 手順:
@@ -184,6 +187,20 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 
 - cloud の `/web-setup` は、`gh` の token をアカウント全体の GitHub の接続として保存し、今の接続を置き換える。環境ごとに分けられない。
 - 中継を通さずに、公式 GitHub MCP の readonly の URL をそのままコネクタにすると、key の確認が無く、全部のセッションから全部の repo を読める。
+
+### App を入れられない他ユーザー個人の repo に PR を出す場合（未実装の案）
+
+上の OAuth App のコネクタは `/mcp/readonly` なので、PR も Issue も作れません（書き込みのツールが出ないため。Issue 用のコネクタは別に考える）。org の repo なら org に App を入れてもらう道がありますが、ほかの人の個人のアカウントの private の repo（`tksugimoto-ai` が collaborator）では、今のところ PR を出す手段がありません。
+
+今後の案として、次のことを考えています。どれもまだ試していません。
+
+- PR 専用の OAuth のコネクタ（URL は `https://<中継>/mcp/x/pull_requests`）を足す。中継のパスの許可に足し、このパスでも `repo` の scope を求める。このツールセットでどのツールが出るかは、まだ確かめていない。
+- このとき、何もしなければマージができてしまう。PR のツールセットには `merge_pull_request` が入っていて、OAuth App の token は `repo` の scope を持ち、個人のアカウントの repo の collaborator は必ず Write になるので、GitHub 側では止まらない。
+- 対策として、中継でこのパスの `merge_pull_request` を常に拒否する。拒否するツールを URL の query で指定する案もあるが、コネクタを登録するときに書き忘れると通ってしまうので、中継に決め打ちするほうがよい。
+- claude.ai のコネクタの設定で、ツールごとに使わせないようにすることもできるが、これは補助にとどめる（設定を変えれば外せるため）。
+- どの対策も中継（と claude.ai）を通る場合の話で、token そのものが漏れたときは、マージも `main` への push も防げない。弱くなる点は上の読み取り専用のコネクタと同じ。
+
+代わりの方法として、その repo の持ち主に独自の GitHub App を install してもらい、上の `/mcp` のコネクタで PR を出すこともできると考えられる（未確認）。この場合は GitHub 側で App の install 先と権限に絞られるので、OAuth App より守りは強い。
 
 ## key の取り消し
 

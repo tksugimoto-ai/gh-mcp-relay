@@ -77,6 +77,8 @@ GitHub App とコネクタは1つだけ作り、どのセッションからも�
 
 GitHub App を入れられない repo（ほかの人の private の repo など）は、OAuth App で認可する読み取り専用のコネクタを別に足して読みます（URL は `/mcp/readonly`）。OAuth App の token は GitHub 側で repo を絞れないので、境界は key と readonly のパスだけになります。手順と弱くなる点は [README.md](../README.md) にまとめています。
 
+このコネクタは読み取り専用なので、ほかの人の個人のアカウントの private の repo（`tksugimoto-ai` が collaborator）には PR を出せません。PR 専用の OAuth のコネクタ（`/mcp/x/pull_requests`）を足す案がありますが、OAuth App の token は `repo` の scope を持ち、個人の repo の collaborator は必ず Write なので、そのままでは `merge_pull_request` が通ってしまいます。足すなら、中継でこのパスの `merge_pull_request` を常に拒否します（URL の query で指定する案より、決め打ちのほうが書き忘れが無い）。claude.ai のコネクタの設定でのツールの拒否は補助で、どの対策も token が漏れたときは効きません。持ち主に GitHub App を install してもらい、`/mcp` で PR を出す方法もあります（未確認）。詳しくは [README.md](../README.md) にまとめています。どれもまだ試していません。
+
 | 守るもの | 強制するもの | 仕組み |
 | --- | --- | --- |
 | セッションごとの repo の範囲 | 中継 | key に書いた `owner/repo` と、ツール引数の `owner`/`repo` を照らし合わせる |
@@ -99,16 +101,25 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 
 コネクタの URL は、公式 GitHub MCP の URL（`https://api.githubcopilot.com/mcp/...`）のホスト部分だけを中継のものに置き換えたものにします。登録する人にとってルールがわかりやすく、中継はパスをそのまま転送するだけで済みます。
 
-- この中継は GitHub 専用で、汎用の MCP 中継にはしない。転送先は `api.githubcopilot.com` に固定し、パスも `/mcp` と `/mcp/readonly` だけを受け付ける（token をほかの API に流さないため。また、ツールの拒否は既定のツールセットのツールだけを確かめて名前で決めているので、`/mcp/x/gists` などほかのツールセットを通すと、確かめていないツールが使えてしまうため）。
+- この中継は GitHub 専用で、汎用の MCP 中継にはしない。転送先は `api.githubcopilot.com` に固定し、パスも `/mcp`、`/mcp/x/<ツールセット>`（`all` を含む）と、それぞれの `/readonly` 版だけを受け付ける（token をほかの API に流さないため）。`/insiders` は試験中のツールが出るので通さない。
+- ツールセットでは絞らず、使えるツールは下の「ツールの扱い」の一覧で決める。`/mcp/x/all` のコネクタ 1 つで、既定のツールも actions なども使える。
+- 何ができるかは App の権限で決まる。actions の再実行などを使わせたくないときは、App にその権限を付けない。複数のツールセットを組み合わせる `X-MCP-Toolsets` ヘッダーは転送しない（中継がリクエストを書き換える所を増やさないため）。
 
 ### ツールの扱い
 
 - 通す JSON-RPC のメソッドは、`initialize`・`ping`・`tools/list`・`tools/call`・`notifications/*` だけにする。公式 GitHub MCP は repo の中身をリソース（`repo://{owner}/{repo}/contents{/path*}` など）としても出していて、`resources/read` などは repo を URI で渡すので、引数の `owner`/`repo` では確かめられないため。
-- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。
-- `owner`/`repo` を取らないツール（`get_teams`、`create_repository`、`search_code` など）は、`get_me` を除いて拒否する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。
-- Projects のツール（`projects_list`、`projects_write` など）は、`owner` だけを取りアカウントや org 全体に効く。使わない `repo` を足すと確認を通ってしまうので、名前に `project` を含むツールは引数によらず拒否する。
-- 同じ理由で、key の repo の外に効くツール（`create_repository`、`get_teams`、`get_team_members`）は名前で拒否し、owner/repo とは別に対象のアカウントや org を決める引数（`organization`、`org`、`user`、`username`、`gist_id`、`notificationID`）が付いた呼び出しも拒否する。たとえば `fork_repository` の `organization` で、許した repo を別の org に fork させない。名前で拒否しているので、そうしたツールや引数が既定のツールセットに別の名前で増えると通ってしまう（ほかのツールセットはパスで通さない）。
-- `search_*` は `owner`/`repo` を省略でき（`search_issues` など）、クエリでほかの repo にも届きうるので、引数によらず拒否する。
+- 使ってよいツールを一覧（`REPO_TOOLS`）で持ち、一覧に無いツールは引数によらず拒否し、`tools/list` からも外す。一覧に入れるのは、`owner` と `repo` を必ず取り、上流の API も repo のパスになる（key の repo の中に閉じる）と確かめたツールだけ。上流は使わない引数を無視するので、`owner`/`repo` を取らないツールに使わない `owner`/`repo` を足されると、引数の確認を通ってしまう（Projects、`create_repository` など）。名前で拒否する方式では、上流がそうしたツールを足すたびに穴になるので、通すものを並べる方式にする。上流が足したツールは、一覧に足すまで使えない（method は下の項目）。
+- 一覧に入れないもの: `search_*`（クエリでほかの repo にも届きうる）、Projects、`create_repository`・`get_teams`・`get_team_members`、gists・notifications・stargazers・orgs・users・copilot_spaces のツール、`list_global_security_advisories` など repo を取らないもの。copilot（Copilot の agent を動かす）と governance（org・enterprise の level がある）、`delete_repository` も、要るまで入れない。
+- 引数の `owner`/`repo`（`parent_owner`/`parent_repo` なども）がすべて key の範囲にあるときだけ転送する。`list_issue_types` のように `repo` を省略できるツールは、`repo` を付けたときだけ通り、そのときはその repo に絞られる。`owner` だけで `repo` が無い呼び出しは拒否する。
+- owner/repo とは別に対象のアカウントや org を決める引数（`organization`、`org`、`enterprise`、`user`、`username`、`gist_id`、`notificationID`）が付いた呼び出しは拒否する。たとえば `fork_repository` の `organization` で、許した repo を別の org に fork させない。一覧のツールにこうした引数が別の名前で足されると通ってしまう。
+- method で動きを変えるツール（`issue_write`・`pull_request_review_write`・`actions_run_trigger` など）は、使ってよい method も一覧（`TOOL_METHODS`）で持ち、一覧に無い method や method の無い呼び出しは拒否する。上流が method を足しても、一覧に足すまで使えない。一覧に無いツールに method が付いた呼び出しも拒否する（上流がそのツールに method を足したときの備え）。
+- repo を含まない ID だけで対象を決め、owner/repo を使わない method は一覧に入れない。owner/repo を許した repo にしたまま、ID で別の repo のものを指せるため（github-mcp-server のソースで確かめた）。
+  - `pull_request_review_write` の `resolve_thread`・`unresolve_thread`（GraphQL の node ID の `threadId`）
+  - `discussion_comment_write` の `update`・`delete`・`mark_answer`・`unmark_answer`（`commentNodeID`）。`reply` は、上流がコメントが owner/repo の Discussion のものかを確かめてから返信するので入れる。GitHub の API も、その Discussion に無い返信先は無視してトップレベルのコメントにするので、最悪でも許した repo にコメントが付くだけ
+  - `sub_issue_write` の `add`（Issue の数値の ID の `sub_issue_id`）。GitHub は同じ owner の別の repo の Issue を sub-issue にできる（REST API の説明に「The sub-issue must belong to the same repository owner as the parent issue」とある）ので、key に書いていない同じ owner の repo（private のものも）の Issue を子にして `issue_read` の `get_sub_issues` でタイトルや本文を読んだり、`replace_parent` で親を付け替えたりできる。`remove`・`reprioritize` は許した Issue の子にしか効かないので入れる（人が別の repo の Issue を子にしてあれば、`remove` でその Issue の親が外れる）。新しい Issue を sub-issue として作るのは、`issue_write` の `create` の `parent_issue_number` でできる（親の repo も key で確かめる）
+- このため、中継経由ではレビューのスレッドの解決・未解決、Discussion のコメントの編集・削除・回答の印付け、既存の Issue を sub-issue にすることはできない。
+- 人が GitHub の画面で別の repo の Issue を sub-issue にしてあると、`issue_read` の `get_sub_issues`・`get_parent` でその Issue の中身が読める。中継は返事の中身を見ないので、これは防げない。
+- `fork_repository` は本人のアカウントに fork を作るので、厳密には key の repo の中に閉じない。作った fork には key が無いので、それ以上は触れない。fork から PR を出す使い方のために残す。
 - 中継は通信の中身をこれ以上は解析しない。ツールごとに細かく制限したくなったら、公式サーバーへの転送をやめて、少数の自前ツールを実装する。
 
 ## cloud の環境構成

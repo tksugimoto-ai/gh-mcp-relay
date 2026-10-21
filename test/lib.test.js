@@ -7,10 +7,13 @@ import {
   createKey,
   deniedMethod,
   injectKeyParam,
+  isAllowedTool,
   matchRoute,
+  oauthScope,
   reposInArgs,
   resourceMetadata,
   stripKey,
+  TOOL_METHODS,
   verifyKey,
 } from '../src/lib.js';
 
@@ -30,13 +33,27 @@ test('matchRoute: パスをそのまま公式 GitHub MCP に渡す', () => {
     path: '/mcp/readonly',
     upstream: 'https://api.githubcopilot.com/mcp/readonly',
   });
+  // ツールセットを 1 つ選ぶパスと、その読み取り専用版。
+  for (const path of ['/mcp/x/actions', '/mcp/x/actions/readonly/', '/mcp/x/all', '/mcp/x/all/readonly', '/mcp/x/pull_requests']) {
+    assert.equal(matchRoute(path)?.upstream, `https://api.githubcopilot.com${path}`, path);
+  }
+  assert.equal(matchRoute('/.well-known/oauth-protected-resource/mcp/x/actions/readonly').path, '/mcp/x/actions/readonly');
 });
 
-test('matchRoute: /mcp と /mcp/readonly 以外や怪しいパスは拒否する', () => {
-  // ほかのツールセットのツールは、中継の拒否リストで確かめていないので通さない。
-  assert.equal(matchRoute('/mcp/x/gists'), null);
-  assert.equal(matchRoute('/mcp/x/issues/readonly'), null);
-  assert.equal(matchRoute('/.well-known/oauth-protected-resource/mcp/x/notifications'), null);
+test('matchRoute: 決めた形以外や怪しいパスは拒否する', () => {
+  // ツールセット名に見える readonly・insiders も通さない。insiders は試験中のツールが出る。カンマ区切りは上流が受け付けない。
+  assert.equal(matchRoute('/mcp/x/readonly'), null);
+  assert.equal(matchRoute('/mcp/x/readonly/readonly'), null);
+  assert.equal(matchRoute('/mcp/x/insiders'), null);
+  assert.equal(matchRoute('/mcp/x/insiders/readonly'), null);
+  assert.equal(matchRoute('/mcp/x/readonly_x')?.path, '/mcp/x/readonly_x', '名前全体が一致するときだけ断る');
+  assert.equal(matchRoute('/mcp/insiders'), null);
+  assert.equal(matchRoute('/mcp/x/all/insiders'), null);
+  assert.equal(matchRoute('/mcp/x/all/readonly/insiders'), null);
+  assert.equal(matchRoute('/mcp/x/issues,pull_requests'), null);
+  assert.equal(matchRoute('/mcp/x/'), null);
+  assert.equal(matchRoute('/mcp/x/a/b'), null);
+  assert.equal(matchRoute('/mcp/readonly/x/all'), null);
   assert.equal(matchRoute('/'), null);
   assert.equal(matchRoute('/user'), null);
   assert.equal(matchRoute('/mcpx'), null);
@@ -53,6 +70,10 @@ test('resourceMetadata: GitHub を認可サーバーとして返す', () => {
   });
   // OAuth App のコネクタを登録する readonly のパスでは、private の repo を読むための scope を返す。
   assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/readonly').scopes_supported, ['repo']);
+  assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/x/actions/readonly/').scopes_supported, ['repo']);
+  assert.equal(resourceMetadata('https://relay.example.com', '/mcp/x/actions').scopes_supported, undefined);
+  // repo の scope を求めるのは、パスの末尾が /readonly のときだけ。
+  assert.equal(oauthScope('/mcp/readonly/x'), null);
 });
 
 test('createKey / verifyKey: 読める形で、署名を確かめる', async () => {
@@ -82,8 +103,8 @@ test('createKey: 不正な入力を拒否する', async () => {
 test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確かめる', () => {
   assert.deepEqual(reposInArgs({ owner: 'A', repo: 'B', parent_owner: 'c', parent_repo: 'd', title: 'x' }), ['a/b', 'c/d']);
   const allowed = ['tksugimoto/a'];
-  assert.equal(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
-  assert.match(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'b' } }, allowed), /tksugimoto\/b/);
+  assert.equal(checkCall({ tool: 'issue_write', args: { method: 'create', owner: 'tksugimoto', repo: 'a' } }, allowed), null);
+  assert.match(checkCall({ tool: 'issue_write', args: { method: 'create', owner: 'tksugimoto', repo: 'b' } }, allowed), /tksugimoto\/b/);
   assert.ok(checkCall({ tool: 'issue_write', args: { owner: 'tksugimoto', repo: 'a', parent_owner: 'x', parent_repo: 'y' } }, allowed));
   assert.ok(checkCall({ tool: 'search_issues', args: { query: 'repo:x/y' } }, allowed));
   assert.ok(checkCall({ tool: 'search_issues', args: { owner: 'tksugimoto', repo: 'a', query: 'x' } }, allowed));
@@ -91,6 +112,56 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   // owner/repo 以外で対象を決める引数や、repo の外に効くツールは、使わない owner/repo を足しても通さない。
   assert.match(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a', organization: 'other' } }, allowed), /organization/);
   assert.equal(checkCall({ tool: 'fork_repository', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
+  assert.match(checkCall({ tool: 'issue_read', args: { method: 'get', owner: 'tksugimoto', repo: 'a', enterprise: 'e' } }, allowed), /enterprise/);
+  // method で動きを変えるツールは、一覧の method だけ通す。repo を含まない ID だけで対象を決める method や、
+  // 上流が足した method、method の無い呼び出しは断る。
+  const deniedMethods = [
+    ['pull_request_review_write', { method: 'resolve_thread', threadId: 'PRRT_x' }],
+    ['sub_issue_write', { method: 'add', issue_number: 1, sub_issue_id: 2 }],
+    ['issue_write', { method: 'a_new_upstream_method' }],
+    ['issue_write', {}],
+    ['list_issues', { method: 'a_new_upstream_method' }],
+    ['discussion_comment_write', { method: 'update', commentNodeID: 'DC_x', body: 'b' }],
+    ['discussion_comment_write', { method: 'delete', commentNodeID: 'DC_x' }],
+  ];
+  for (const [tool, args] of deniedMethods) {
+    assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), /method/, `${tool} ${args.method}`);
+  }
+  const allowedMethods = [
+    ['pull_request_review_write', { method: 'create', pullNumber: 1 }],
+    ['discussion_comment_write', { method: 'reply', discussionNumber: 1, commentNodeID: 'DC_x', body: 'b' }],
+    ['sub_issue_write', { method: 'remove', issue_number: 1, sub_issue_id: 2 }],
+    ['sub_issue_write', { method: 'reprioritize', issue_number: 1, sub_issue_id: 2, after_id: 3 }],
+  ];
+  for (const [tool, args] of allowedMethods) {
+    assert.equal(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), null, `${tool} ${args.method}`);
+  }
+  // actions のツールも owner/repo で確かめる。
+  assert.equal(checkCall({ tool: 'actions_list', args: { owner: 'tksugimoto', repo: 'a', method: 'list_workflow_runs' } }, allowed), null);
+  assert.ok(checkCall({ tool: 'get_job_logs', args: { owner: 'tksugimoto', repo: 'b', run_id: 1 } }, allowed));
+  // owner だけで repo の無い呼び出しは断る（list_issue_types などは repo を省ける）。
+  assert.match(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto' } }, allowed), /owner には repo も要ります/);
+  assert.equal(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
+  assert.equal(checkCall({ tool: 'run_secret_scanning', args: { owner: 'tksugimoto', repo: 'a', files: 'x' } }, allowed), null);
+  // TOOL_METHODS のツールは、すべて使ってよいツールの一覧にある。
+  for (const tool of TOOL_METHODS.keys()) assert.ok(isAllowedTool(tool), tool);
+  // 一覧に無いツールは、使わない owner/repo を足しても通さない（上流は使わない引数を無視するため）。
+  for (const tool of [
+    'create_gist',
+    'list_gists',
+    'list_starred_repositories',
+    'get_copilot_space',
+    'dismiss_notification',
+    'list_global_security_advisories',
+    'repository_ruleset_read',
+    'star_repository',
+    'a_new_upstream_tool',
+  ]) {
+    assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', name: 'x' } }, allowed), /使えません/, tool);
+  }
+  for (const tool of ['create_gist', 'list_notifications', 'list_global_security_advisories']) {
+    assert.ok(checkCall({ tool, args: {} }, allowed), tool);
+  }
   for (const tool of ['create_repository', 'get_teams', 'get_team_members']) {
     assert.ok(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', name: 'x' } }, allowed), tool);
   }
@@ -141,4 +212,14 @@ test('injectKeyParam: JSON と SSE の両方で引数を足す', () => {
   const sse = `event: message\ndata: ${JSON.stringify(result)}\n\n`;
   const line = injectKeyParam(sse, 'text/event-stream').split('\n')[1];
   assert.ok(JSON.parse(line.slice(5)).result.tools[0].inputSchema.properties[KEY_ARG]);
+});
+
+test('injectKeyParam: 使えないツールを tools/list から外す', () => {
+  const names = ['get_me', 'issue_write', 'actions_list', 'search_code', 'create_gist', 'projects_list', 'a_new_upstream_tool'];
+  const result = { jsonrpc: '2.0', id: 1, result: { tools: names.map((name) => ({ name, inputSchema: { type: 'object' } })) } };
+  const patched = JSON.parse(injectKeyParam(JSON.stringify(result), 'application/json'));
+  assert.deepEqual(
+    patched.result.tools.map((tool) => tool.name),
+    ['get_me', 'issue_write', 'actions_list'],
+  );
 });
