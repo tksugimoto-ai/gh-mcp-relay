@@ -13,10 +13,11 @@ const METADATA_PREFIX = '/.well-known/oauth-protected-resource/';
 // `readonly`・`insiders` はツールセット名にしない（`/insiders` は試験中のツールが出るので通さない）。
 const UPSTREAM_PATH_RE = /^\/mcp(?:\/x\/(?!(?:readonly|insiders)(?:\/|$))[a-z_]+)?(\/readonly)?\/?$/;
 
-// 使ってよいツール。owner と repo を必ず取り、上流の API も repo のパスになる（key の repo の中に閉じる）と
-// 確かめたものだけ。一覧に無いツールは、引数によらず使わせず、tools/list からも外す。owner/repo を取らない
-// ツールは、使わない owner/repo を足されると引数の確認を通ってしまうので、一覧に入れない（search_*、
-// Projects、create_repository、get_teams、gists、notifications、stargazers など）。上流がツールを足しても、
+// 使ってよいツール。owner と repo を取り、上流の API も repo のパスになる（key の repo の中に閉じる）と
+// 確かめたものだけ（list_issue_types などは repo を省けるが、中継は repo を付けたときだけ通す）。
+// 一覧に無いツールは、引数によらず使わせず、tools/list からも外す。owner/repo を取らないツールは、
+// 使わない owner/repo を足されると引数の確認を通ってしまうので、一覧に入れない（search_*、Projects、
+// create_repository、get_teams、gists、notifications、stargazers など）。上流がツールを足しても、
 // ここに足すまでは使えない。
 const REPO_TOOLS = new Set([
   // repos・git（fork_repository は本人のアカウントに fork を作るが、作った fork には key が無いので触れない）
@@ -65,6 +66,7 @@ const REPO_TOOLS = new Set([
   'actions_run_trigger',
   'get_job_logs',
   // code_quality・code_security・dependabot・secret_protection・security_advisories
+  // （run_secret_scanning は、渡した内容をその repo の設定で調べる）
   'get_code_quality_finding',
   'get_code_scanning_alert',
   'get_dependabot_alert',
@@ -90,10 +92,11 @@ const REPOLESS_TOOLS = new Set(['get_me']);
 // - discussion_comment_write の update・delete・mark_answer・unmark_answer（commentNodeID）。reply は、上流が
 //   コメントが owner/repo の Discussion のものかを確かめる（GitHub の API も、その Discussion に無い返信先は無視して
 //   トップレベルのコメントにする）ので入れる
-// - sub_issue_write の add（sub_issue_id）。GitHub は別の repo の Issue を sub-issue にできるので、別の repo の Issue を
+// - sub_issue_write の add（sub_issue_id）。GitHub は同じ owner の別の repo の Issue を sub-issue にできるので、その Issue を
 //   子にして get_sub_issues で中身を読んだり、replace_parent で親を付け替えたりできる。remove・reprioritize は、許した
-//   Issue の子の中でしか効かないので入れる
-const TOOL_METHODS = new Map([
+//   Issue の子にしか効かないので入れる（人が別の repo の Issue を子にしてあれば、remove でその Issue の親が外れる）
+// ここに無いツールに method が付いていたら使わせない（上流が method を足したときの備え）。
+export const TOOL_METHODS = new Map([
   ['issue_read', ['get', 'get_comments', 'get_sub_issues', 'get_parent', 'get_labels']],
   ['issue_write', ['create', 'update']],
   ['label_write', ['create', 'update', 'delete']],
@@ -212,9 +215,14 @@ export function isAllowedTool(name) {
 export function checkCall(call, allowedRepos) {
   if (!isAllowedTool(call.tool)) return `${call.tool} は中継で使えません`;
   const methods = TOOL_METHODS.get(call.tool);
-  if (methods && !methods.has(call.args?.method)) return `${call.tool} の method ${call.args?.method} は中継で使えません`;
+  const method = call.args?.method;
+  if (methods ? !methods.has(method) : method !== undefined) return `${call.tool} の method ${method} は中継で使えません`;
   const targetArg = Object.keys(call.args ?? {}).find((name) => TARGET_ARGS.has(name));
   if (targetArg) return `引数 ${targetArg} は使えません`;
+  const ownerOnly = Object.keys(call.args ?? {}).find(
+    (name) => name.endsWith('owner') && call.args[`${name.slice(0, -'owner'.length)}repo`] === undefined,
+  );
+  if (ownerOnly) return `${ownerOnly} には repo も要ります`;
   const repos = reposInArgs(call.args);
   if (repos.length === 0) {
     return REPOLESS_TOOLS.has(call.tool) ? null : 'owner と repo が要ります';

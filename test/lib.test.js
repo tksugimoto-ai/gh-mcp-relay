@@ -7,11 +7,13 @@ import {
   createKey,
   deniedMethod,
   injectKeyParam,
+  isAllowedTool,
   matchRoute,
   oauthScope,
   reposInArgs,
   resourceMetadata,
   stripKey,
+  TOOL_METHODS,
   verifyKey,
 } from '../src/lib.js';
 
@@ -115,11 +117,12 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   // 上流が足した method、method の無い呼び出しは断る。
   const deniedMethods = [
     ['pull_request_review_write', { method: 'resolve_thread', threadId: 'PRRT_x' }],
-    ['discussion_comment_write', { method: 'update', commentNodeID: 'DC_x', body: 'b' }],
-    ['discussion_comment_write', { method: 'delete', commentNodeID: 'DC_x' }],
     ['sub_issue_write', { method: 'add', issue_number: 1, sub_issue_id: 2 }],
     ['issue_write', { method: 'a_new_upstream_method' }],
     ['issue_write', {}],
+    ['list_issues', { method: 'a_new_upstream_method' }],
+    ['discussion_comment_write', { method: 'update', commentNodeID: 'DC_x', body: 'b' }],
+    ['discussion_comment_write', { method: 'delete', commentNodeID: 'DC_x' }],
   ];
   for (const [tool, args] of deniedMethods) {
     assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), /method/, `${tool} ${args.method}`);
@@ -136,6 +139,12 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
   // actions のツールも owner/repo で確かめる。
   assert.equal(checkCall({ tool: 'actions_list', args: { owner: 'tksugimoto', repo: 'a', method: 'list_workflow_runs' } }, allowed), null);
   assert.ok(checkCall({ tool: 'get_job_logs', args: { owner: 'tksugimoto', repo: 'b', run_id: 1 } }, allowed));
+  // owner だけで repo の無い呼び出しは断る（list_issue_types などは repo を省ける）。
+  assert.match(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto' } }, allowed), /owner には repo も要ります/);
+  assert.equal(checkCall({ tool: 'list_issue_types', args: { owner: 'tksugimoto', repo: 'a' } }, allowed), null);
+  assert.equal(checkCall({ tool: 'run_secret_scanning', args: { owner: 'tksugimoto', repo: 'a', files: 'x' } }, allowed), null);
+  // TOOL_METHODS のツールは、すべて使ってよいツールの一覧にある。
+  for (const tool of TOOL_METHODS.keys()) assert.ok(isAllowedTool(tool), tool);
   // 一覧に無いツールは、使わない owner/repo を足しても通さない（上流は使わない引数を無視するため）。
   for (const tool of [
     'create_gist',
