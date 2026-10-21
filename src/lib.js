@@ -87,7 +87,8 @@ const REPOLESS_TOOLS = new Set(['get_me']);
 // （fork_repository の organization で、許した repo を別の org に fork させない、など）。REPO_TOOLS のツールに
 // こうした引数が足されたときの備えも兼ねる。repo を含まない ID（GraphQL の node ID や Issue の ID）で対象を
 // 決める引数も、owner/repo を許した repo にしたまま別の repo のものを指せるので使わせない（pull_request_review_write の
-// resolve_thread の threadId、discussion_comment_write の commentNodeID）。sub_issue_write の sub_issue_id・after_id・
+// resolve_thread の threadId、discussion_comment_write の commentNodeID）。ただし discussion_comment_write の reply は、
+// 上流がコメントが owner/repo の Discussion のものかを確かめるので通す（REPO_SCOPED_ID_CALLS）。sub_issue_write の sub_issue_id・after_id・
 // before_id は、別の repo の Issue を指せる穴が今の /mcp と同じく残るが、sub-issue を使えるほうを選んで通す。
 const TARGET_ARGS = new Set([
   'organization',
@@ -100,6 +101,8 @@ const TARGET_ARGS = new Set([
   'threadId',
   'commentNodeID',
 ]);
+// 上流が ID を owner/repo の中のものか確かめるので、TARGET_ARGS の ID を通してよい呼び出し（ツール名:method → 引数）。
+const REPO_SCOPED_ID_CALLS = new Map([['discussion_comment_write:reply', 'commentNodeID']]);
 // 中継が通す JSON-RPC のメソッド。resources/read・prompts/get・completion/complete などは、
 // owner/repo を引数ではなく URI などで渡すので確かめられない。通さない。
 const ALLOWED_METHODS = new Set(['initialize', 'ping', 'tools/list', 'tools/call']);
@@ -202,7 +205,8 @@ export function isAllowedTool(name) {
 // tools/call を key の範囲で許すか。許さないときは理由を返す。
 export function checkCall(call, allowedRepos) {
   if (!isAllowedTool(call.tool)) return `${call.tool} は中継で使えません`;
-  const targetArg = Object.keys(call.args ?? {}).find((name) => TARGET_ARGS.has(name));
+  const checkedId = REPO_SCOPED_ID_CALLS.get(`${call.tool}:${call.args?.method}`);
+  const targetArg = Object.keys(call.args ?? {}).find((name) => TARGET_ARGS.has(name) && name !== checkedId);
   if (targetArg) return `引数 ${targetArg} は使えません`;
   const repos = reposInArgs(call.args);
   if (repos.length === 0) {

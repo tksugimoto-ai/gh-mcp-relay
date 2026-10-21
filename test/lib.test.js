@@ -120,6 +120,9 @@ test('reposInArgs / checkCall: 引数の owner/repo を key の範囲で確か�
     assert.match(checkCall({ tool, args: { owner: 'tksugimoto', repo: 'a', ...args } }, allowed), reason, tool);
   }
   assert.equal(checkCall({ tool: 'pull_request_review_write', args: { owner: 'tksugimoto', repo: 'a', method: 'create', pullNumber: 1 } }, allowed), null);
+  // Discussion のコメントへの返信は、上流がコメントの repo を確かめるので通す。
+  assert.equal(checkCall({ tool: 'discussion_comment_write', args: { owner: 'tksugimoto', repo: 'a', method: 'reply', discussionNumber: 1, commentNodeID: 'DC_x', body: 'b' } }, allowed), null);
+  assert.match(checkCall({ tool: 'discussion_comment_write', args: { owner: 'tksugimoto', repo: 'a', method: 'delete', commentNodeID: 'DC_x' } }, allowed), /commentNodeID/);
   // sub-issue の ID は、別の repo の Issue を指せる穴が残るが、使えるほうを選んで通す。
   assert.equal(checkCall({ tool: 'sub_issue_write', args: { owner: 'tksugimoto', repo: 'a', method: 'add', issue_number: 1, sub_issue_id: 2 } }, allowed), null);
   assert.equal(checkCall({ tool: 'sub_issue_write', args: { owner: 'tksugimoto', repo: 'a', method: 'reprioritize', issue_number: 1, sub_issue_id: 2, after_id: 3 } }, allowed), null);
