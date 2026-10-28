@@ -129,10 +129,12 @@ export function matchRoute(pathname) {
 }
 
 // OAuth App で認可するときに求める scope。OAuth App の token は求めた scope しか持たないので、
-// private の repo を読むには repo が要る。OAuth App のコネクタは readonly のパスで登録する
-// （同じ URL のコネクタは 2 つ登録できない）ので、readonly のパスでだけ返す。GitHub App は scope を見ない。
+// private の repo に届くには repo が要る。OAuth App のコネクタは readonly のパスと、Issue とコメントだけを
+// 書く issues のパスで登録する（同じ URL のコネクタは 2 つ登録できない）ので、そのパスでだけ返す。
+// GitHub App は scope を見ない。
+const OAUTH_PATH_RE = /^(?:.*\/readonly|\/mcp\/x\/issues)\/?$/;
 export function oauthScope(path) {
-  return /\/readonly\/?$/.test(path) ? 'repo' : null;
+  return OAUTH_PATH_RE.test(path) ? 'repo' : null;
 }
 
 export function resourceMetadata(origin, path) {

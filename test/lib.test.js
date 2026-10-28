@@ -72,8 +72,15 @@ test('resourceMetadata: GitHub を認可サーバーとして返す', () => {
   assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/readonly').scopes_supported, ['repo']);
   assert.deepEqual(resourceMetadata('https://relay.example.com', '/mcp/x/actions/readonly/').scopes_supported, ['repo']);
   assert.equal(resourceMetadata('https://relay.example.com', '/mcp/x/actions').scopes_supported, undefined);
-  // repo の scope を求めるのは、パスの末尾が /readonly のときだけ。
+  // Issue とコメントだけを書く OAuth App のコネクタのパスでも返す。
+  assert.equal(oauthScope('/mcp/x/issues'), 'repo');
+  assert.equal(oauthScope('/mcp/x/issues/'), 'repo');
+  // repo の scope を求めるのは、パスの末尾が /readonly のときと、issues のパスだけ。
   assert.equal(oauthScope('/mcp/readonly/x'), null);
+  assert.equal(oauthScope('/mcp/x/issues_x'), null);
+  assert.equal(oauthScope('/mcp/x/pull_requests'), null);
+  assert.equal(oauthScope('/mcp/x/all'), null);
+  assert.equal(oauthScope('/mcp'), null);
 });
 
 test('createKey / verifyKey: 読める形で、署名を確かめる', async () => {

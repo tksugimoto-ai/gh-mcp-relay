@@ -60,6 +60,10 @@ export default {
     }
     const upstream = await fetch(route.upstream, { method: request.method, headers, body });
 
+    if (!upstream.ok) {
+      // 上流が断った理由を後から追えるように残す。本文は上流が返すエラーの文なので、使い切る前に複製して読む。
+      logUpstreamError(route.path, upstream.status, upstream.headers.get('www-authenticate'), await upstream.clone().text());
+    }
     if (upstream.status === 401) return unauthorized(url.origin, route.path);
 
     const responseHeaders = new Headers();
@@ -100,4 +104,10 @@ function text(status, value) {
 // token・ヘッダー・key は残さない。
 function log(path, tool, result) {
   console.log(JSON.stringify({ path, tool, result }));
+}
+
+// 上流のエラーの応答。WWW-Authenticate（足りない scope など。token は含まない）と、本文の先頭だけを残す。
+const UPSTREAM_ERROR_BODY_MAX = 500;
+function logUpstreamError(path, status, wwwAuthenticate, body) {
+  console.log(JSON.stringify({ path, upstreamStatus: status, wwwAuthenticate, body: body.slice(0, UPSTREAM_ERROR_BODY_MAX) }));
 }

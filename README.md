@@ -82,7 +82,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - 拒否したときは転送せず、JSON-RPC のエラーを返す。
 - `tools/list` の結果には、各ツールに `gh_mcp_relay_key` 引数（必須）を足す。
 
-ログにはパス・ツール名・結果だけを残し、token・ヘッダー・key は残しません。
+ログにはパス・ツール名・結果だけを残し、token・ヘッダー・key は残しません。上流（公式 GitHub MCP）がエラーを返したときは、断られた理由を追えるように、パス・ステータス・上流の `WWW-Authenticate`（足りない scope など）・本文の先頭 500 文字も残します。
 
 `wrangler.jsonc` で Workers Logs を有効にしているので、このログは Cloudflare に保存され、ダッシュボードで後から見られます（拒否された呼び出しを追うため）。リクエストごとの invocation log は URL やリクエストの情報を含むので、無効にしています。保存したくなければ `observability.enabled` を `false` にしてください。
 
@@ -156,14 +156,14 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 | | 上のコネクタ | 足すコネクタ |
 | --- | --- | --- |
 | OAuth のクライアント | GitHub App | OAuth App |
-| URL | `https://<中継>/mcp` など | `https://<中継>/mcp/readonly` など（`/readonly` で終わるパスだけ） |
+| URL | `https://<中継>/mcp` など | `https://<中継>/mcp/readonly` など（`/readonly` で終わるパスだけ。Issue も書くときは下の `/mcp/x/issues` も） |
 | 届く範囲を絞るもの | GitHub（App の install 先）と key | key だけ |
 | 書き込み | できる（App の権限の範囲で） | できない（公式 GitHub MCP の readonly で、書き込みのツールが出ない） |
 
 - 同じ URL のコネクタは 2 つ目を登録できないので、readonly のパスで URL を分けます。読み取り専用にすること自体も、この用途に合っています。
-- ほかのツールセットを読むときも、`/mcp/x/all/readonly` のように `/readonly` で終わるパスで登録します。OAuth App の token には App の権限による制限が無いので、`/readonly` で終わらないパスでは登録しません（中継も、`repo` の scope は `/readonly` で終わるパスでだけ求めます）。
+- ほかのツールセットを読むときも、`/mcp/x/all/readonly` のように `/readonly` で終わるパスで登録します。OAuth App の token には App の権限による制限が無いので、`/readonly` で終わらないパスでは、下の `/mcp/x/issues` のほかは登録しません（中継も、`repo` の scope は `/readonly` で終わるパスと `/mcp/x/issues` でだけ求めます）。
 - 中継の確認（key の署名、使ってよいツールの一覧、引数の `owner`/`repo`）は、そのまま効きます。
-- OAuth App の token は、認可のときに求めた scope しか持ちません。private の repo を読むには `repo` の scope が要るので、中継は readonly のパスでだけ、メタデータの `scopes_supported` と 401 の `WWW-Authenticate` で `repo` を伝えます。
+- OAuth App の token は、認可のときに求めた scope しか持ちません。private の repo に届くには `repo` の scope が要るので、中継は readonly のパスと `/mcp/x/issues` でだけ、メタデータの `scopes_supported` と 401 の `WWW-Authenticate` で `repo` を伝えます。
 
 手順:
 
@@ -175,10 +175,17 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 6. org の repo では、org の owner に OAuth App を承認してもらう。承認されるまでは「organization has enabled OAuth App access restrictions」の 403 になる。owner が org の Settings → Third-party access（`https://github.com/organizations/<org>/settings/oauth_application_policy`）で Approve する。owner でなければ、Authorized OAuth Apps でその App を開き、org の横の Request で申請する。
 7. その repo 用の key を発行し、専用の環境に `GH_MCP_RELAY_KEY` として置く（上の手順と同じ）。
 
+Issue とコメントも書く場合:
+
+- 同じ OAuth App で、URL を `https://<中継>/mcp/x/issues` にしたコネクタをもう1つ登録する（手順の 4 と同じ）。公式 GitHub MCP の issues のツールセットだけが出るので、書き込みのツールは `issue_write`・`add_issue_comment`・`update_issue_comment`・`sub_issue_write` だけになる。push やマージのツールは出ない。
+- `issue_write` と `add_issue_comment` は PR にも効く（タイトル・本文の書き換え、close、コメント）。
+- `sub_issue_write` の `add` は、ほかのコネクタと同じく中継が拒否する（既存の Issue を ID で子にするので、別の repo の Issue を指せる）。
+- コードを読むときは readonly のコネクタを使う。issues のツールセットにはコードを読むツールが無い。
+
 守りが弱くなる点:
 
 - OAuth App の token は `repo` の scope で、`tksugimoto-ai` が触れる全部の repo に読み書きできる。GitHub 側で範囲を絞れず、境界は key と readonly のパスだけになる。
-- 読み取り専用なのは、コネクタの URL（`/readonly`）で公式 GitHub MCP が書き込みのツールを出さないからで、token そのものは書き込める。token が漏れたとき（中継や claude.ai の外で使われたとき）や、同じ OAuth App を `/readonly` の無い URL のコネクタで登録したときには、この制限は効かない（漏れたときは key も効かない）。token でできるのは scope と `tksugimoto-ai` 自身の権限が重なる部分なので、被害の上限は `tksugimoto-ai` の権限の全体になる。読むだけの repo では `tksugimoto-ai` を Read の role にしておくのが守りになる（Read でも Issue の作成やコメントはできる）。
+- 読み取り専用なのは、コネクタの URL（`/readonly`）で公式 GitHub MCP が書き込みのツールを出さないからで、token そのものは書き込める。`/mcp/x/issues` で書き込みを Issue とコメントに絞るのも、同じくコネクタの URL だけ。token が漏れたとき（中継や claude.ai の外で使われたとき）や、同じ OAuth App を `/readonly` の無い URL のコネクタで登録したときには、この制限は効かない（漏れたときは key も効かない）。token でできるのは scope と `tksugimoto-ai` 自身の権限が重なる部分なので、被害の上限は `tksugimoto-ai` の権限の全体になる。読むだけの repo では `tksugimoto-ai` を Read の role にしておくのが守りになる（Read でも Issue の作成やコメントはできる）。
 - token はセッションからは見えない（claude.ai が持ち、中継は転送するだけ）。ただし、中継を動かす Cloudflare のアカウントでコードを書き換えれば、token を記録できる。
 - key は同じ claude.ai アカウントの中では強い境界にならない（[docs/design.md](docs/design.md) のリスク）。強い境界が要る repo は claude.ai のアカウントを分ける。この方法は、アカウントを分けるほどではない repo 向け。
 - OAuth App の token には、既定で期限が無い。要らなくなったら、Authorized OAuth Apps で取り消す。
@@ -190,7 +197,7 @@ claude.ai のアカウントでログインしたローカルの Claude Code に
 
 ### App を入れられない他ユーザー個人の repo に PR を出す場合（未実装の案）
 
-上の OAuth App のコネクタは `/mcp/readonly` なので、PR も Issue も作れません（書き込みのツールが出ないため。Issue 用のコネクタは別に考える）。org の repo なら org に App を入れてもらう道がありますが、ほかの人の個人のアカウントの private の repo（`tksugimoto-ai` が collaborator）では、今のところ PR を出す手段がありません。
+上の OAuth App のコネクタは `/mcp/readonly` と `/mcp/x/issues` なので、PR は作れません（PR を作るツールが出ないため）。org の repo なら org に App を入れてもらう道がありますが、ほかの人の個人のアカウントの private の repo（`tksugimoto-ai` が collaborator）では、今のところ PR を出す手段がありません。
 
 今後の案として、次のことを考えています。どれもまだ試していません。
 
@@ -235,10 +242,10 @@ key は中継に記録しないので、1つずつ取り消すことはできま
 | ケース | 使うコネクタ | 持ち主に頼むこと | 今の中継でできること | Claude に渡す権限（漏れたときに使われうる範囲） |
 | --- | --- | --- | --- | --- |
 | App を入れてもらえる（どの種類でも） | GitHub App のコネクタ（`/mcp` など） | App の install（org なら owner か repo の admin）。fork から PR を出すなら fork にも自分で入れる | 読む、Issue・コメント、PR の作成・レビュー（App の権限の範囲） | GitHub App の user token。App の権限（Issues・Pull requests の読み書き、Contents・Metadata の読み取り）、install 先、`tksugimoto-ai` の role の重なる部分だけ。既定で 8 時間で切れる |
-| 個人 public、App 無し | OAuth App のコネクタ（`/readonly` で終わるパス） | なし | 読むだけ（GitHub 上はコラボレーターでなくても Issue や PR を出せるが、中継が readonly） | OAuth App の token（`repo` の scope）。`tksugimoto-ai` が触れる全部の repo に、その権限のとおり読み書きできる。期限は無い |
-| 個人 private、App 無し | OAuth App のコネクタ（同上） | コラボレーターへの招待（必ず Write になる） | 読むだけ | 同上。この repo には Write なので、マージや（保護ブランチが無ければ）`main` への push もできる |
-| org public、App 無し | OAuth App のコネクタ（同上） | なし | 読むだけ | 同上。制限が有効で承認されていない org の repo には、この token では書けない（読むことはできる） |
-| org private、App 無し | OAuth App のコネクタ（同上） | role を付けること。org の OAuth App の制限が有効なら（既定で有効）OAuth App の承認 | 読むだけ | 同上。承認された org では、見える repo 全部に `tksugimoto-ai` の role のとおり届く |
+| 個人 public、App 無し | OAuth App のコネクタ（`/readonly` で終わるパス） | なし | 読む。`/mcp/x/issues` のコネクタも足せば Issue・コメント（GitHub 上はコラボレーターでなくても PR を出せるが、中継では出せない） | OAuth App の token（`repo` の scope）。`tksugimoto-ai` が触れる全部の repo に、その権限のとおり読み書きできる。期限は無い |
+| 個人 private、App 無し | OAuth App のコネクタ（同上） | コラボレーターへの招待（必ず Write になる） | 読む、Issue・コメント（`/mcp/x/issues` のコネクタも足したとき） | 同上。この repo には Write なので、マージや（保護ブランチが無ければ）`main` への push もできる |
+| org public、App 無し | OAuth App のコネクタ（同上） | なし | 読む、Issue・コメント（`/mcp/x/issues` のコネクタも足したとき） | 同上。制限が有効で承認されていない org の repo には、この token では書けない（読むことはできる） |
+| org private、App 無し | OAuth App のコネクタ（同上） | role を付けること。org の OAuth App の制限が有効なら（既定で有効）OAuth App の承認 | 読む、Issue・コメント（`/mcp/x/issues` のコネクタも足したとき） | 同上。承認された org では、見える repo 全部に `tksugimoto-ai` の role のとおり届く |
 
 - どのケースでも、その repo 用の key が要る。
 - OAuth App のコネクタは、どのケースのために足しても token は同じで、漏れたときの範囲は `tksugimoto-ai` の権限の全体になる。ケースごとに違うのは、その repo での `tksugimoto-ai` の role だけ。守りは `tksugimoto-ai` の権限を小さく保つこと（読むだけの org の repo は Read にしてもらう、要らない招待は外してもらう）。
