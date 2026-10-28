@@ -76,6 +76,33 @@ test('issues のパスの 401 も scope を伝える', async () => {
   assert.match(res.headers.get('www-authenticate'), /, scope="repo"$/);
 });
 
+test('上流のエラーは、理由をログに残してそのまま返す', async () => {
+  stubFetch({
+    upstream: () =>
+      new Response('insufficient scopes', {
+        status: 403,
+        headers: { 'www-authenticate': 'Bearer error="insufficient_scope", scope="repo"' },
+      }),
+  });
+  const logged = [];
+  const realLog = console.log;
+  console.log = (line) => logged.push(JSON.parse(line));
+  try {
+    const res = await worker.fetch(call(toolCall({ [KEY_ARG]: KEY, ...repoArgs })), env);
+    assert.equal(res.status, 403);
+    assert.equal(await res.text(), 'insufficient scopes');
+  } finally {
+    console.log = realLog;
+  }
+  assert.deepEqual(logged.at(-1), {
+    path: '/mcp',
+    upstreamStatus: 403,
+    wwwAuthenticate: 'Bearer error="insufficient_scope", scope="repo"',
+    body: 'insufficient scopes',
+  });
+  assert.ok(!JSON.stringify(logged).includes('gho_test'), 'token は残さない');
+});
+
 test('/mcp 以外のパスは 404', async () => {
   stubFetch();
   const res = await worker.fetch(new Request('https://relay.example.com/user', { method: 'POST' }), env);

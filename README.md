@@ -82,7 +82,7 @@ key は `gh-mcp-relay:<owner/repo>[,<owner/repo>...][:<期限>]:<署名>` の形
 - 拒否したときは転送せず、JSON-RPC のエラーを返す。
 - `tools/list` の結果には、各ツールに `gh_mcp_relay_key` 引数（必須）を足す。
 
-ログにはパス・ツール名・結果だけを残し、token・ヘッダー・key は残しません。
+ログにはパス・ツール名・結果だけを残し、token・ヘッダー・key は残しません。上流（公式 GitHub MCP）がエラーを返したときは、断られた理由を追えるように、パス・ステータス・上流の `WWW-Authenticate`（足りない scope など）・本文の先頭 500 文字も残します。
 
 `wrangler.jsonc` で Workers Logs を有効にしているので、このログは Cloudflare に保存され、ダッシュボードで後から見られます（拒否された呼び出しを追うため）。リクエストごとの invocation log は URL やリクエストの情報を含むので、無効にしています。保存したくなければ `observability.enabled` を `false` にしてください。
 
